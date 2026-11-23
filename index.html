@@ -1,38 +1,112 @@
+
 <!DOCTYPE html>
 <html lang="pt">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Árvore em pontos</title>
+<title>Abacateiro AR</title>
+
 <style>
-  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: system-ui, sans-serif; }
-  canvas { display: block; touch-action: none; }
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: system-ui, sans-serif;
+  }
+
+  canvas {
+    display: block;
+    touch-action: none;
+  }
+
   #aviso {
-    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-    color: #cfd8c8; font-size: 15px; text-align: center; padding: 0 24px;
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #cfd8c8;
+    font-size: 15px;
+    text-align: center;
+    padding: 24px;
+    z-index: 20;
   }
-  #arContainer { position: fixed; inset: 0; display: none; overflow: hidden; z-index: 1; background: #000; touch-action: none; }
-  #overlay { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
-  #overlay > * { pointer-events: auto; }
+
+  #arContainer {
+    position: fixed;
+    inset: 0;
+    display: none;
+    overflow: hidden;
+    z-index: 1;
+    background: transparent;
+    touch-action: none;
+  }
+
+  #overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  #overlay > * {
+    pointer-events: auto;
+  }
+
   .btn {
-    position: fixed; left: 50%; transform: translateX(-50%);
-    padding: 14px 26px; border: 1px solid #cfd8c8; border-radius: 999px;
-    background: rgba(0, 0, 0, 0.55); color: #e9efe4; text-decoration: none;
-    font-size: 15px; white-space: nowrap; font-family: inherit; cursor: pointer;
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 14px 26px;
+    border: 1px solid #cfd8c8;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.65);
+    color: #e9efe4;
+    text-decoration: none;
+    font-size: 15px;
+    white-space: nowrap;
+    font-family: inherit;
+    cursor: pointer;
   }
-  #botao { bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
-  #botaoAR { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
-  #voltar { top: calc(20px + env(safe-area-inset-top, 0px)); display: none; }
+
+  #botaoAR {
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  #voltar {
+    top: calc(20px + env(safe-area-inset-top, 0px));
+    display: none;
+  }
+
   #dica {
-    position: fixed; top: calc(80px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
-    display: none; padding: 10px 18px; border-radius: 999px; background: rgba(0, 0, 0, 0.6);
-    color: #e9efe4; font-size: 14px; text-align: center; max-width: 80%;
+    position: fixed;
+    top: calc(80px + env(safe-area-inset-top, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    padding: 10px 18px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #e9efe4;
+    font-size: 14px;
+    text-align: center;
+    max-width: 80%;
   }
+
   #nota {
-    position: fixed; left: 12px; right: 12px; text-align: center; color: #b9c4b3; font-size: 13px; display: none;
-    bottom: calc(140px + env(safe-area-inset-bottom, 0px));
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    text-align: center;
+    color: #b9c4b3;
+    font-size: 13px;
+    display: none;
+    bottom: calc(90px + env(safe-area-inset-bottom, 0px));
   }
 </style>
+
 <script type="importmap">
 {
   "imports": {
@@ -43,61 +117,61 @@
 }
 </script>
 </head>
+
 <body>
-<div id="aviso">A carregar…</div>
+
+<div id="aviso">A carregar o abacateiro…</div>
 <div id="arContainer"></div>
+
 <div id="overlay">
   <button id="voltar" class="btn" type="button">Voltar</button>
-  <div id="dica">Aponta a câmara para o desenho do jardim</div>
+  <div id="dica">Aponta a câmara para a imagem do abacateiro</div>
   <div id="nota"></div>
   <button id="botaoAR" class="btn" type="button">Ver no papel</button>
-  <a id="botao" class="btn" href="#" target="_blank" rel="noopener"></a>
 </div>
 
 <script type="module">
+
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-// ====== AJUSTES (podes mudar estes valores) ======
-const FICHEIRO = 'arvore1_pontos.bin';
-const MARCADOR = 'targets.mind';             // ficheiro criado a partir do teu desenho
-const LINK = 'https://www.instagram.com/';   // troca pelo teu link
-const TEXTO_BOTAO = 'Ver no Instagram';
-const MAX_PONTOS = 200000;                   // menos pontos = mais leve no telemóvel (o ficheiro tem 200000)
-const TAMANHO_PONTO = 0.009;                 // pontos mais pequenos = árvore mais densa e detalhada
-const BRILHO = 1.3;                          // sobe se as cores parecerem escuras
+import { OrbitControls } from
+  'three/addons/controls/OrbitControls.js';
 
-// aspeto escuro com luz (como na referência)
-const DENSIDADE_ESCURA = 0.22;               // parte dos pontos visível no escuro (0 a 1; menor = mais vazio)
-const ESCURIDAO = 0.16;                      // brilho dos pontos no escuro (0 a 1)
-const RAIO_LUZ = 0.6;                        // tamanho da zona iluminada (a árvore tem 2 de altura)
-const TEMPO_LUZ = 2.5;                       // segundos que a luz demora a apagar depois de tocares
-const LUZ_AUTOMATICA = true;                 // uma luz lenta passeia sozinha pela árvore quando ninguém toca
-const INTENSIDADE_AUTO = 0.55;               // força dessa luz (0 a 1)
-const COR_LUZ = [1.0, 0.95, 0.82];           // tom da luz (R, G, B de 0 a 1); mais quente = mais amarelado
-const PONTOS_SOLTOS = 0;                  // pontinhos soltos à volta da árvore (0 = nenhum)
-const ESCALA_MARCADOR = 0.35;                // tamanho da árvore em relação à largura do desenho
-const POSICAO_X = 0;                         // mover a árvore no papel (esquerda -, direita +)
-const POSICAO_Y = 0;                         // mover a árvore no papel (baixo -, cima +)
+import { GLTFLoader } from
+  'three/addons/loaders/GLTFLoader.js';
 
-// scan inicial (de baixo para cima)
-const DURACAO_SCAN = 3.5;                    // segundos que o scan demora a subir a árvore
-const DISPERSAO_PONTOS = 0.35;               // maior = pontos a aparecer mais soltos, um a um
-const ZONA_BRILHO = 0.18;                    // espessura da faixa luminosa na frente do scan
-const TAMANHO_BRILHO = 1.8;                  // quanto os pontos crescem ao aparecer
-const COR_BRILHO = [0.85, 1.0, 0.75];        // cor da frente do scan (R, G, B de 0 a 1)
 
-// dispersão ao tocar na árvore
-const RAIO_TOQUE = 0.35;                     // tamanho da zona afetada (a árvore tem 2 de altura)
-const FORCA_TOQUE = 0.7;                     // até onde os pontos voam
-const TEMPO_SAIDA = 0.25;                    // segundos até à dispersão máxima
-const TEMPO_REGRESSO = 1.6;                  // quanto demora a voltar ao normal (maior = mais lento)
-const TOLERANCIA_TOQUE = 0.12;               // quão perto do toque tem de haver pontos para contar
-// =================================================
+// ==================================================
+// FICHEIROS
+// ==================================================
 
-const botao = document.getElementById('botao');
-botao.href = LINK;
-botao.textContent = TEXTO_BOTAO;
+const MODELO = 'models/Abacateiro_Arvore3.glb';
+const FICHEIRO = 'pointclouds/abacateiro_pontos.bin';
+const MARCADOR = 'targets/targets.mind';
+
+
+// ==================================================
+// CONFIGURAÇÃO
+// ==================================================
+
+const MAX_PONTOS = 100000;
+
+const TAMANHO_PONTO = 0.008;
+const BRILHO = 1.3;
+
+const RAIO_TOQUE = 0.45;
+const FORCA_DISPERSAO = 0.28;
+const TEMPO_REGRESSO = 1.5;
+
+const ALTURA_AR = 0.7;
+
+const ROTACAO_AR = 0.15;
+
+
+// ==================================================
+// ELEMENTOS HTML
+// ==================================================
+
 const aviso = document.getElementById('aviso');
 const botaoAR = document.getElementById('botaoAR');
 const voltar = document.getElementById('voltar');
@@ -105,332 +179,822 @@ const dica = document.getElementById('dica');
 const nota = document.getElementById('nota');
 const arContainer = document.getElementById('arContainer');
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x000000);
+
+// ==================================================
+// THREE.JS
+// ==================================================
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  alpha: false
+});
+
+renderer.setPixelRatio(
+  Math.min(window.devicePixelRatio, 2)
+);
+
+renderer.setSize(
+  window.innerWidth,
+  window.innerHeight
+);
+
+renderer.setClearColor(0x000000, 1);
+
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
 document.body.appendChild(renderer.domElement);
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 1.2, 3.4);
 
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 1, 0);
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(
+  45,
+  window.innerWidth / window.innerHeight,
+  0.01,
+  100
+);
+
+
+const controls = new OrbitControls(
+  camera,
+  renderer.domElement
+);
+
 controls.enableDamping = true;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
-controls.update();
+
+
+const luzAmbiente = new THREE.AmbientLight(
+  0xffffff,
+  1.5
+);
+
+scene.add(luzAmbiente);
+
+
+const luzPrincipal = new THREE.DirectionalLight(
+  0xffffff,
+  2
+);
+
+luzPrincipal.position.set(3, 5, 4);
+scene.add(luzPrincipal);
+
+
+// Grupo principal da árvore
 
 const arvore = new THREE.Group();
 scene.add(arvore);
 
-// ====== Material dos pontos (scan + dispersão) ======
-const FIM_SCAN = 2.0 + DISPERSAO_PONTOS + ZONA_BRILHO + 0.05;   // altura final do scan
 
-const uni = {
-  uSize:  { value: TAMANHO_PONTO },
-  uPx:    { value: 1 },
-  uScale: { value: 400 },
-  uScan:  { value: -1 },                   // -1 = tudo escondido
-  uBand:  { value: DISPERSAO_PONTOS },
-  uFlash: { value: ZONA_BRILHO },
-  uFlashSize: { value: TAMANHO_BRILHO },
-  uFlashColor: { value: new THREE.Vector3(...COR_BRILHO) },
-  uDens:  { value: DENSIDADE_ESCURA },
-  uEscuro: { value: ESCURIDAO },
-  uLuz:   { value: new THREE.Vector3(0, 1, 0) },
-  uLuzInt: { value: 0 },
-  uLuzRaio: { value: RAIO_LUZ },
-  uCorLuz: { value: new THREE.Vector3(...COR_LUZ) },
-  uHit:   { value: new THREE.Vector3(0, 0, 0) },
-  uForca: { value: 0 },
-  uRaio:  { value: RAIO_TOQUE },
-  uAlcance: { value: FORCA_TOQUE }
-};
+// Grupo do modelo realista
 
-const materialPontos = new THREE.ShaderMaterial({
-  uniforms: uni,
-  vertexColors: true,
-  vertexShader: `
-    attribute vec3 aRand;
-    uniform float uSize, uPx, uScale, uScan, uBand, uFlash, uFlashSize, uForca, uRaio, uAlcance, uDens, uEscuro, uLuzInt, uLuzRaio;
-    uniform vec3 uFlashColor, uHit, uLuz, uCorLuz;
-    varying vec3 vColor;
-    void main() {
-      float r = aRand.x * 0.5 + 0.5;
-      float rv = aRand.y * 0.5 + 0.5;
-      float edge = (uScan - position.y) - r * uBand;
+const modelo = new THREE.Group();
+arvore.add(modelo);
 
-      // luz: perto dela aparecem mais pontos e ficam mais claros
-      float L = smoothstep(uLuzRaio, 0.0, distance(position, uLuz)) * uLuzInt;
-      float mostra = mix(uDens, 1.0, L);
 
-      if (edge < 0.0 || rv > mostra) {
-        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-        gl_PointSize = 0.0;
-        vColor = vec3(0.0);
-        return;
-      }
-      float flash = 1.0 - smoothstep(0.0, uFlash, edge);
-      vec3 p = position + aRand * 0.025 * flash;
+// Grupo das partículas
 
-      // dispersão ao tocar
-      float d = distance(position, uHit);
-      float w = smoothstep(uRaio, 0.0, d);
-      vec3 dir = normalize(position - uHit + aRand * 0.35 + vec3(0.0001));
-      float f = w * uForca * uAlcance * (0.5 + 0.9 * abs(aRand.x));
-      p += dir * f + aRand * f * 0.5;
+const grupoPontos = new THREE.Group();
+arvore.add(grupoPontos);
 
-      vec4 mv = modelViewMatrix * vec4(p, 1.0);
-      gl_PointSize = uSize * uPx * (uScale / -mv.z)
-                   * (0.75 + 0.55 * L)
-                   * (1.0 + (uFlashSize - 1.0) * flash)
-                   * (1.0 - 0.45 * w * uForca);
-      gl_Position = projectionMatrix * mv;
 
-      float brilho = mix(uEscuro, 1.0, L);
-      vec3 base = color * brilho * mix(vec3(1.0), uCorLuz, L);
-      vColor = mix(base, uFlashColor, flash * 0.85);
-    }
-  `,
-  fragmentShader: `
-    varying vec3 vColor;
-    void main() {
-      vec2 q = gl_PointCoord - vec2(0.5);
-      if (dot(q, q) > 0.25) discard;
-      gl_FragColor = vec4(vColor, 1.0);
-      #include <colorspace_fragment>
-    }
-  `
-});
+let alturaArvore = 2;
+let modeloCarregado = false;
+let pontosCarregados = false;
+let arAtivo = false;
+
+let meshesModelo = [];
 
 let posicoes = null;
 let nPontos = 0;
-let materialSoltos = null;
-let arAtivo = false;
 
-async function carregar() {
-  const resp = await fetch(FICHEIRO);
-  if (!resp.ok) throw new Error('ficheiro em falta');
-  const buf = await resp.arrayBuffer();
-  const dv = new DataView(buf);
-  const total = dv.getUint32(0, true);
-  const escala = dv.getFloat32(4, true);
+let pontos = null;
+let materialPontos = null;
 
-  const pos16 = new Int16Array(buf, 8, total * 3);
-  const cor8 = new Uint8Array(buf, 8 + total * 6, total * 3);
+let ultimoToque = -1000;
+
+const relogio = new THREE.Clock();
+
+
+// ==================================================
+// MATERIAL DAS PARTÍCULAS
+// ==================================================
+
+const uniforms = {
+
+  uSize: {
+    value: TAMANHO_PONTO
+  },
+
+  uPixelRatio: {
+    value: renderer.getPixelRatio()
+  },
+
+  uScale: {
+    value: window.innerHeight * 0.5
+  },
+
+  uHit: {
+    value: new THREE.Vector3()
+  },
+
+  uStrength: {
+    value: 0
+  },
+
+  uRadius: {
+    value: RAIO_TOQUE
+  },
+
+  uScatter: {
+    value: FORCA_DISPERSAO
+  }
+
+};
+
+
+materialPontos = new THREE.ShaderMaterial({
+
+  uniforms,
+
+  vertexColors: true,
+
+  transparent: true,
+
+  depthWrite: false,
+
+  blending: THREE.AdditiveBlending,
+
+  vertexShader: `
+
+    attribute vec3 aRand;
+
+    uniform float uSize;
+    uniform float uPixelRatio;
+    uniform float uScale;
+    uniform float uStrength;
+    uniform float uRadius;
+    uniform float uScatter;
+
+    uniform vec3 uHit;
+
+    varying vec3 vColor;
+    varying float vAlpha;
+
+    void main() {
+
+      float distancia = distance(position, uHit);
+
+      float zona = 1.0 - smoothstep(
+        uRadius * 0.65,
+        uRadius,
+        distancia
+      );
+
+      float visibilidade = zona * uStrength;
+
+      if (visibilidade < 0.01) {
+
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        gl_PointSize = 0.0;
+
+        vColor = vec3(0.0);
+        vAlpha = 0.0;
+
+        return;
+
+      }
+
+      vec3 direcao = normalize(
+        position - uHit + aRand * 0.3 + vec3(0.0001)
+      );
+
+      float dispersao = uScatter * uStrength;
+
+      vec3 p = position + direcao * dispersao * zona;
+
+      p += aRand * dispersao * 0.35 * zona;
+
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+
+      gl_PointSize = uSize * uPixelRatio
+        * (uScale / max(-mv.z, 0.01))
+        * (0.8 + visibilidade * 2.0);
+
+      gl_Position = projectionMatrix * mv;
+
+      vColor = color * (1.0 + visibilidade * 1.5);
+
+      vAlpha = visibilidade;
+
+    }
+
+  `,
+
+  fragmentShader: `
+
+    varying vec3 vColor;
+    varying float vAlpha;
+
+    void main() {
+
+      vec2 q = gl_PointCoord - vec2(0.5);
+
+      if (dot(q, q) > 0.25) discard;
+
+      gl_FragColor = vec4(
+        vColor,
+        vAlpha
+      );
+
+      #include <colorspace_fragment>
+
+    }
+
+  `
+
+});
+
+
+// ==================================================
+// CARREGAR MODELO GLB
+// ==================================================
+
+async function carregarModelo() {
+
+  const loader = new GLTFLoader();
+
+  const gltf = await loader.loadAsync(MODELO);
+
+  modelo.add(gltf.scene);
+
+  gltf.scene.updateMatrixWorld(true);
+
+  const caixa = new THREE.Box3().setFromObject(
+    gltf.scene
+  );
+
+  if (caixa.isEmpty()) {
+    throw new Error('O modelo GLB não contém geometria.');
+  }
+
+  const centro = new THREE.Vector3();
+
+  caixa.getCenter(centro);
+
+  const dimensoes = new THREE.Vector3();
+
+  caixa.getSize(dimensoes);
+
+  alturaArvore = dimensoes.y;
+
+  if (alturaArvore <= 0) {
+    throw new Error('Não foi possível determinar a altura da árvore.');
+  }
+
+  // Centrar a árvore e colocar a base no nível zero
+
+  gltf.scene.position.x -= centro.x;
+  gltf.scene.position.y -= caixa.min.y;
+  gltf.scene.position.z -= centro.z;
+
+  gltf.scene.updateMatrixWorld(true);
+
+  // Guardar os meshes para detectar os toques
+
+  meshesModelo = [];
+
+  gltf.scene.traverse((obj) => {
+
+    if (obj.isMesh) {
+
+      meshesModelo.push(obj);
+
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+
+    }
+
+  });
+
+  // Enquadrar a árvore na vista inicial
+
+  camera.position.set(
+    0,
+    alturaAr * 0.65,
+    alturaAr * 2.5
+  );
+
+  controls.target.set(
+    0,
+    alturaAr * 0.48,
+    0
+  );
+
+  controls.update();
+
+  modeloCarregado = true;
+
+}
+
+
+// ==================================================
+// CARREGAR NUVEM DE PONTOS
+// ==================================================
+
+async function carregarPontos() {
+
+  const resposta = await fetch(FICHEIRO);
+
+  if (!resposta.ok) {
+    throw new Error('Não foi possível carregar ' + FICHEIRO);
+  }
+
+  const buffer = await resposta.arrayBuffer();
+
+  if (buffer.byteLength < 8) {
+    throw new Error('O ficheiro BIN está incompleto.');
+  }
+
+  const dados = new DataView(buffer);
+
+  const total = dados.getUint32(0, true);
+  const escala = dados.getFloat32(4, true);
+
+  if (!total || !escala) {
+    throw new Error('O cabeçalho do ficheiro BIN é inválido.');
+  }
+
+  const tamanhoEsperado = 8 + total * 9;
+
+  if (buffer.byteLength < tamanhoEsperado) {
+    throw new Error('O ficheiro BIN não contém todos os pontos.');
+  }
+
+  const pos16 = new Int16Array(
+    buffer,
+    8,
+    total * 3
+  );
+
+  const cor8 = new Uint8Array(
+    buffer,
+    8 + total * 6,
+    total * 3
+  );
 
   const n = Math.min(total, MAX_PONTOS);
+
   const passo = total / n;
-  posicoes = new Float32Array(n * 3);
+
+  const posicoesOriginais = new Float32Array(n * 3);
   const cores = new Float32Array(n * 3);
-  const aleat = new Float32Array(n * 3);
-  const c = new THREE.Color();
+  const aleatorio = new Float32Array(n * 3);
+
+  const minimo = new THREE.Vector3(
+    Infinity,
+    Infinity,
+    Infinity
+  );
+
+  const maximo = new THREE.Vector3(
+    -Infinity,
+    -Infinity,
+    -Infinity
+  );
+
+  const cor = new THREE.Color();
+
+  // Ler posições e cores
 
   for (let i = 0; i < n; i++) {
+
     const j = Math.floor(i * passo);
-    posicoes[i * 3]     = pos16[j * 3]     / escala;
-    posicoes[i * 3 + 1] = pos16[j * 3 + 1] / escala;
-    posicoes[i * 3 + 2] = pos16[j * 3 + 2] / escala;
-    c.setRGB(
-      Math.min(cor8[j * 3]     / 255 * BRILHO, 1),
+
+    const x = pos16[j * 3] / escala;
+    const y = pos16[j * 3 + 1] / escala;
+    const z = pos16[j * 3 + 2] / escala;
+
+    posicoesOriginais[i * 3] = x;
+    posicoesOriginais[i * 3 + 1] = y;
+    posicoesOriginais[i * 3 + 2] = z;
+
+    minimo.min(new THREE.Vector3(x, y, z));
+    maximo.max(new THREE.Vector3(x, y, z));
+
+    cor.setRGB(
+      Math.min(cor8[j * 3] / 255 * BRILHO, 1),
       Math.min(cor8[j * 3 + 1] / 255 * BRILHO, 1),
       Math.min(cor8[j * 3 + 2] / 255 * BRILHO, 1),
       THREE.SRGBColorSpace
     );
-    cores[i * 3] = c.r; cores[i * 3 + 1] = c.g; cores[i * 3 + 2] = c.b;
-    aleat[i * 3]     = Math.random() * 2 - 1;
-    aleat[i * 3 + 1] = Math.random() * 2 - 1;
-    aleat[i * 3 + 2] = Math.random() * 2 - 1;
+
+    cores[i * 3] = cor.r;
+    cores[i * 3 + 1] = cor.g;
+    cores[i * 3 + 2] = cor.b;
+
+    aleatorio[i * 3] = Math.random() * 2 - 1;
+    aleatorio[i * 3 + 1] = Math.random() * 2 - 1;
+    aleatorio[i * 3 + 2] = Math.random() * 2 - 1;
+
   }
+
+  // Ajustar a nuvem à dimensão do modelo GLB
+
+  const centroPontos = new THREE.Vector3();
+
+  centroPontos.addVectors(minimo, maximo).multiplyScalar(0.5);
+
+  const alturaPontos = maximo.y - minimo.y;
+
+  if (alturaPontos <= 0) {
+    throw new Error('A nuvem de pontos não tem uma altura válida.');
+  }
+
+  const fator = alturaArvore / alturaPontos;
+
+  posicoes = new Float32Array(n * 3);
+
+  for (let i = 0; i < n; i++) {
+
+    posicoes[i * 3] =
+      (posicoesOriginais[i * 3] - centroPontos.x) * fator;
+
+    posicoes[i * 3 + 1] =
+      (posicoesOriginais[i * 3 + 1] - minimo.y) * fator;
+
+    posicoes[i * 3 + 2] =
+      (posicoesOriginais[i * 3 + 2] - centroPontos.z) * fator;
+
+  }
+
   nPontos = n;
 
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(posicoes, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(cores, 3));
-  geo.setAttribute('aRand', new THREE.BufferAttribute(aleat, 3));
-  const pontos = new THREE.Points(geo, materialPontos);
+  const geometria = new THREE.BufferGeometry();
+
+  geometria.setAttribute(
+    'position',
+    new THREE.BufferAttribute(posicoes, 3)
+  );
+
+  geometria.setAttribute(
+    'color',
+    new THREE.BufferAttribute(cores, 3)
+  );
+
+  geometria.setAttribute(
+    'aRand',
+    new THREE.BufferAttribute(aleatorio, 3)
+  );
+
+  pontos = new THREE.Points(
+    geometria,
+    materialPontos
+  );
+
   pontos.frustumCulled = false;
-  arvore.add(pontos);
 
-  if (PONTOS_SOLTOS > 0) {
-    const ps = new Float32Array(PONTOS_SOLTOS * 3);
-    for (let i = 0; i < PONTOS_SOLTOS; i++) {
-      ps[i * 3]     = (Math.random() * 2 - 1) * 1.5;
-      ps[i * 3 + 1] = Math.random() * 2.4;
-      ps[i * 3 + 2] = (Math.random() * 2 - 1) * 1.5;
-    }
-    const geoS = new THREE.BufferGeometry();
-    geoS.setAttribute('position', new THREE.BufferAttribute(ps, 3));
-    materialSoltos = new THREE.PointsMaterial({ size: TAMANHO_PONTO * 0.9, color: new THREE.Color(0.55, 0.6, 0.55), sizeAttenuation: true });
-    arvore.add(new THREE.Points(geoS, materialSoltos));
-  }
+  grupoPontos.add(pontos);
 
-  aviso.remove();
-  if (!arAtivo) iniciarScan();
+  pontosCarregados = true;
+
 }
 
-carregar().catch(() => {
-  aviso.textContent = 'Não consegui abrir ' + FICHEIRO + '. Confirma que está na mesma pasta que o index.html.';
-});
 
-// ====== Tempo do scan e da dispersão ======
-let t0 = null;                 // início do scan (null = ainda não começou)
-let instanteToque = -1000;     // início da última dispersão
+// ==================================================
+// DETECTAR TOQUES NA ÁRVORE
+// ==================================================
 
-const autoPos = new THREE.Vector3();
+const raycaster = new THREE.Raycaster();
 
-function iniciarScan() { t0 = performance.now() / 1000; }
+const coordenadas = new THREE.Vector2();
 
-function atualizarEfeito(r) {
+function tocar(x, y, camara, elemento) {
+
+  if (!modeloCarregado || !pontosCarregados) return;
+
+  const rect = elemento.getBoundingClientRect();
+
+  coordenadas.x =
+    ((x - rect.left) / rect.width) * 2 - 1;
+
+  coordenadas.y =
+    -((y - rect.top) / rect.height) * 2 + 1;
+
+  arvore.updateMatrixWorld(true);
+
+  raycaster.setFromCamera(
+    coordenadas,
+    camara
+  );
+
+  const interseccoes = raycaster.intersectObjects(
+    meshesModelo,
+    true
+  );
+
+  if (interseccoes.length === 0) return;
+
+  const pontoLocal = arvore.worldToLocal(
+    interseccoes[0].point.clone()
+  );
+
+  uniforms.uHit.value.copy(pontoLocal);
+
+  ultimoToque = performance.now() / 1000;
+
+}
+
+
+// ==================================================
+// ANIMAÇÃO DAS PARTÍCULAS
+// ==================================================
+
+function atualizarParticulas() {
+
+  if (!pontosCarregados) return;
+
   const agora = performance.now() / 1000;
 
-  if (t0 === null) uni.uScan.value = -1;
-  else uni.uScan.value = -0.1 + Math.min((agora - t0) / DURACAO_SCAN, 1) * (FIM_SCAN + 0.1);
+  const tempo = agora - ultimoToque;
 
-  const t = agora - instanteToque;
-  let f = 0;
-  if (t >= 0) f = t < TEMPO_SAIDA ? t / TEMPO_SAIDA : Math.exp(-(t - TEMPO_SAIDA) * (3.0 / TEMPO_REGRESSO));
-  uni.uForca.value = f < 0.005 ? 0 : f;
+  let intensidade = 0;
 
-  // luz: a do toque (acende depressa e apaga devagar) ou a automática
-  let luzToque = 0;
-  if (t >= 0) luzToque = t < 0.15 ? t / 0.15 : Math.exp(-(t - 0.15) * (3.0 / TEMPO_LUZ));
-  if (luzToque < 0.01) luzToque = 0;
-  const autoInt = LUZ_AUTOMATICA ? INTENSIDADE_AUTO : 0;
-  autoPos.set(0.55 * Math.sin(agora * 0.5), 1.1 + 0.6 * Math.sin(agora * 0.37 + 1), 0.4 * Math.cos(agora * 0.43));
-  const mistura = Math.min(luzToque / 0.35, 1);
-  uni.uLuz.value.copy(autoPos).lerp(uni.uHit.value, mistura);
-  uni.uLuzInt.value = Math.max(autoInt, luzToque);
+  if (tempo >= 0) {
 
-  const tam = r.getSize(new THREE.Vector2());
-  uni.uScale.value = tam.y * 0.5;
-  uni.uPx.value = r.getPixelRatio();
-}
+    intensidade = Math.exp(
+      -tempo * (3 / TEMPO_REGRESSO)
+    );
 
-// ====== Toque: descobrir que ponto da árvore foi tocado ======
-const raycaster = new THREE.Raycaster();
-const ndc = new THREE.Vector2();
-const inv = new THREE.Matrix4();
-const o = new THREE.Vector3();
-const d = new THREE.Vector3();
-
-function tocar(clientX, clientY, cam, dom) {
-  if (!posicoes || t0 === null) return;
-  const r = dom.getBoundingClientRect();
-  ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
-  raycaster.setFromCamera(ndc, cam);
-  arvore.updateMatrixWorld(true);
-  inv.copy(arvore.matrixWorld).invert();
-  o.copy(raycaster.ray.origin).applyMatrix4(inv);
-  d.copy(raycaster.ray.direction).transformDirection(inv);
-
-  const lim2 = TOLERANCIA_TOQUE * TOLERANCIA_TOQUE;
-  const alturaVisivel = uni.uScan.value - DISPERSAO_PONTOS;   // só conta pontos que o scan já mostrou
-  let melhorT = Infinity, melhor = -1;
-  for (let i = 0; i < nPontos; i++) {
-    if (posicoes[i * 3 + 1] > alturaVisivel) continue;
-    const vx = posicoes[i * 3] - o.x, vy = posicoes[i * 3 + 1] - o.y, vz = posicoes[i * 3 + 2] - o.z;
-    const t = vx * d.x + vy * d.y + vz * d.z;
-    if (t < 0 || t >= melhorT) continue;
-    const perp2 = vx * vx + vy * vy + vz * vz - t * t;
-    if (perp2 < lim2) { melhorT = t; melhor = i; }
   }
-  if (melhor < 0) return;
-  uni.uHit.value.set(posicoes[melhor * 3], posicoes[melhor * 3 + 1], posicoes[melhor * 3 + 2]);
-  instanteToque = performance.now() / 1000;
+
+  if (intensidade < 0.01) {
+    intensidade = 0;
+  }
+
+  uniforms.uStrength.value = intensidade;
+
 }
 
-// toque simples na vista normal (arrastar continua a rodar a árvore)
-let inicio = null;
-renderer.domElement.addEventListener('pointerdown', (e) => {
-  inicio = { x: e.clientX, y: e.clientY, t: performance.now() };
-});
-renderer.domElement.addEventListener('pointerup', (e) => {
-  if (!inicio) return;
-  const moveu = Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y);
-  const dur = performance.now() - inicio.t;
-  inicio = null;
-  if (moveu < 10 && dur < 500) tocar(e.clientX, e.clientY, camera, renderer.domElement);
-});
 
-// ====== AR com marcador (o desenho no papel) ======
+// ==================================================
+// PRÉ-VISUALIZAÇÃO
+// ==================================================
+
+renderer.domElement.addEventListener(
+  'pointerdown',
+  (e) => {
+
+    tocar(
+      e.clientX,
+      e.clientY,
+      camera,
+      renderer.domElement
+    );
+
+  }
+);
+
+
+renderer.domElement.addEventListener(
+  'pointermove',
+  (e) => {
+
+    if (e.buttons || e.pointerType === 'touch') {
+
+      tocar(
+        e.clientX,
+        e.clientY,
+        camera,
+        renderer.domElement
+      );
+
+    }
+
+  }
+);
+
+
+// ==================================================
+// INICIAR REALIDADE AUMENTADA
+// ==================================================
+
 async function iniciarAR() {
-  if (arAtivo || !nPontos) return;
+
+  if (arAtivo || !modeloCarregado || !pontosCarregados) {
+    return;
+  }
+
   arAtivo = true;
-  nota.style.display = 'none';
+
   botaoAR.style.display = 'none';
+
+  nota.style.display = 'none';
+
   try {
-    const { MindARThree } = await import('mindar-image-three');
+
+    const { MindARThree } = await import(
+      'mindar-image-three'
+    );
 
     arContainer.style.display = 'block';
-    const mindar = new MindARThree({ container: arContainer, imageTargetSrc: MARCADOR });
-    const { renderer: r2, scene: s2, camera: c2 } = mindar;
+
+    const mindar = new MindARThree({
+
+      container: arContainer,
+
+      imageTargetSrc: MARCADOR
+
+    });
+
+    const {
+      renderer: rendererAR,
+      scene: sceneAR,
+      camera: cameraAR
+    } = mindar;
+
+    rendererAR.setClearColor(0x000000, 0);
+
+    rendererAR.domElement.style.background = 'transparent';
+
     const ancora = mindar.addAnchor(0);
 
-    // no marcador, o "cima" do papel é Y e a direção para fora do papel é Z
-    scene.remove(arvore);
-    arvore.rotation.set(Math.PI / 2, 0, 0);
-    arvore.scale.setScalar(ESCALA_MARCADOR);
-    arvore.position.set(POSICAO_X, POSICAO_Y, 0);
-    uni.uSize.value = TAMANHO_PONTO * ESCALA_MARCADOR;
-    if (materialSoltos) materialSoltos.size = TAMANHO_PONTO * 0.9 * ESCALA_MARCADOR;
+    // Dimensionar a árvore para o marcador
+
+    arvore.scale.setScalar(
+      ALTURA_AR / alturaArvore
+    );
+
+    arvore.position.set(0, 0, 0);
+
+    arvore.rotation.set(0, 0, 0);
+
     ancora.group.add(arvore);
 
-    t0 = null;   // a árvore fica escondida até o desenho ser reconhecido
+    // Esconder a pré-visualização
+
+    renderer.domElement.style.display = 'none';
 
     await mindar.start();
 
-    renderer.setAnimationLoop(null);
-    renderer.domElement.style.display = 'none';
-    r2.setAnimationLoop(() => {
-      atualizarEfeito(r2);
-      r2.render(s2, c2);
-    });
-
-    // tocar ou arrastar o dedo sobre a árvore dispersa os pontos
-    let ultimo = 0;
-    const aoToque = (e) => {
-      const agora = performance.now();
-      if (agora - ultimo < 60) return;
-      ultimo = agora;
-      tocar(e.clientX, e.clientY, c2, r2.domElement);
-    };
-    arContainer.addEventListener('pointerdown', aoToque);
-    arContainer.addEventListener('pointermove', (e) => {
-      if (e.buttons || e.pointerType === 'touch') aoToque(e);
-    });
-
     voltar.style.display = 'block';
     dica.style.display = 'block';
-    let jaVisto = false;
+
+    const aoToque = (e) => {
+
+      tocar(
+        e.clientX,
+        e.clientY,
+        cameraAR,
+        rendererAR.domElement
+      );
+
+    };
+
+    rendererAR.domElement.addEventListener(
+      'pointerdown',
+      aoToque
+    );
+
+    rendererAR.domElement.addEventListener(
+      'pointermove',
+      (e) => {
+
+        if (e.buttons || e.pointerType === 'touch') {
+          aoToque(e);
+        }
+
+      }
+    );
+
     ancora.onTargetFound = () => {
       dica.style.display = 'none';
-      if (!jaVisto) { jaVisto = true; iniciarScan(); }
     };
-    ancora.onTargetLost = () => { dica.style.display = 'block'; };
-  } catch (e) {
-    nota.textContent = 'Não consegui abrir a câmara ou o marcador (' + MARCADOR + '). Confirma a permissão da câmara e que o ficheiro existe.';
+
+    ancora.onTargetLost = () => {
+      dica.style.display = 'block';
+    };
+
+    let ultimoTempo = performance.now();
+
+    rendererAR.setAnimationLoop(() => {
+
+      const agora = performance.now();
+
+      const delta = (agora - ultimoTempo) / 1000;
+
+      ultimoTempo = agora;
+
+      arvore.rotation.y += ROTACAO_AR * delta;
+
+      atualizarParticulas();
+
+      rendererAR.render(
+        sceneAR,
+        cameraAR
+      );
+
+    });
+
+  } catch (erro) {
+
+    console.error(erro);
+
+    nota.textContent =
+      'Não foi possível iniciar a realidade aumentada. Verifica a câmara e o ficheiro do marcador.';
+
     nota.style.display = 'block';
+
     voltar.style.display = 'block';
+
+    arAtivo = false;
+
   }
+
 }
 
-botaoAR.addEventListener('click', iniciarAR);
-voltar.addEventListener('click', () => location.reload());
+
+// ==================================================
+// BOTÕES
+// ==================================================
+
+botaoAR.addEventListener(
+  'click',
+  iniciarAR
+);
+
+voltar.addEventListener(
+  'click',
+  () => location.reload()
+);
+
+
+// ==================================================
+// REDIMENSIONAR
+// ==================================================
 
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+
+  camera.aspect =
+    window.innerWidth / window.innerHeight;
+
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  renderer.setSize(
+    window.innerWidth,
+    window.innerHeight
+  );
+
+  uniforms.uScale.value =
+    window.innerHeight * 0.5;
+
 });
 
-renderer.setAnimationLoop(() => {
-  atualizarEfeito(renderer);
-  controls.update();
-  renderer.render(scene, camera);
-});
+
+// ==================================================
+// CARREGAMENTO INICIAL
+// ==================================================
+
+async function iniciar() {
+
+  try {
+
+    await carregarModelo();
+
+    await carregarPontos();
+
+    aviso.remove();
+
+    renderer.setAnimationLoop(() => {
+
+      const delta = relogio.getDelta();
+
+      controls.update();
+
+      atualizarParticulas();
+
+      renderer.render(
+        scene,
+        camera
+      );
+
+    });
+
+  } catch (erro) {
+
+    console.error(erro);
+
+    aviso.textContent =
+      'Ocorreu um erro ao carregar a árvore. Verifica os ficheiros e os caminhos no GitHub.';
+
+  }
+
+}
+
+iniciar();
+
 </script>
 </body>
 </html>
