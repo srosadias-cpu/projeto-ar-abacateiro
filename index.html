@@ -3,7 +3,7 @@
 <html lang="pt">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Abacateiro AR</title>
 
 <style>
@@ -41,6 +41,14 @@
     overflow: hidden;
     z-index: 1;
     background: transparent;
+    touch-action: none;
+  }
+
+  #arContainer canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     touch-action: none;
   }
 
@@ -156,7 +164,7 @@ const MARCADOR = 'targets/targets.mind';
 
 const MAX_PONTOS = 100000;
 
-const TAMANHO_PONTO = 0.008;
+const TAMANHO_PONTO = 0.012;
 const BRILHO = 1.3;
 
 const RAIO_TOQUE = 0.45;
@@ -164,8 +172,11 @@ const FORCA_DISPERSAO = 0.28;
 const TEMPO_REGRESSO = 1.5;
 
 const ALTURA_AR = 0.7;
-
 const ROTACAO_AR = 0.15;
+
+// Evita activar partículas no tronco.
+// A zona de toque começa a 35% da altura da árvore.
+const ALTURA_MINIMA_TOQUE = 0.35;
 
 
 // ==================================================
@@ -181,7 +192,7 @@ const arContainer = document.getElementById('arContainer');
 
 
 // ==================================================
-// THREE.JS
+// THREE.JS: PRÉ-VISUALIZAÇÃO
 // ==================================================
 
 const renderer = new THREE.WebGLRenderer({
@@ -199,7 +210,6 @@ renderer.setSize(
 );
 
 renderer.setClearColor(0x000000, 1);
-
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 document.body.appendChild(renderer.domElement);
@@ -215,6 +225,8 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 
+// Controlos da pré-visualização
+
 const controls = new OrbitControls(
   camera,
   renderer.domElement
@@ -225,13 +237,15 @@ controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
 
 
-const luzAmbiente = new THREE.AmbientLight(
-  0xffffff,
-  1.5
+// Iluminação da pré-visualização
+
+scene.add(
+  new THREE.HemisphereLight(
+    0xffffff,
+    0x526047,
+    1.5
+  )
 );
-
-scene.add(luzAmbiente);
-
 
 const luzPrincipal = new THREE.DirectionalLight(
   0xffffff,
@@ -242,25 +256,26 @@ luzPrincipal.position.set(3, 5, 4);
 scene.add(luzPrincipal);
 
 
-// Grupo principal da árvore
+// ==================================================
+// GRUPOS DA ÁRVORE
+// ==================================================
 
 const arvore = new THREE.Group();
 scene.add(arvore);
 
-
-// Grupo do modelo realista
-
 const modelo = new THREE.Group();
 arvore.add(modelo);
-
-
-// Grupo das partículas
 
 const grupoPontos = new THREE.Group();
 arvore.add(grupoPontos);
 
 
+// ==================================================
+// VARIÁVEIS
+// ==================================================
+
 let alturaArvore = 2;
+
 let modeloCarregado = false;
 let pontosCarregados = false;
 let arAtivo = false;
@@ -274,6 +289,8 @@ let pontos = null;
 let materialPontos = null;
 
 let ultimoToque = -1000;
+
+let mindarAtivo = null;
 
 const relogio = new THREE.Clock();
 
@@ -310,6 +327,14 @@ const uniforms = {
 
   uScatter: {
     value: FORCA_DISPERSAO
+  },
+
+  uTime: {
+    value: 0
+  },
+
+  uTreeHeight: {
+    value: 1
   }
 
 };
@@ -320,11 +345,9 @@ materialPontos = new THREE.ShaderMaterial({
   uniforms,
 
   vertexColors: true,
-
   transparent: true,
-
   depthWrite: false,
-
+  depthTest: true,
   blending: THREE.AdditiveBlending,
 
   vertexShader: `
@@ -337,6 +360,8 @@ materialPontos = new THREE.ShaderMaterial({
     uniform float uStrength;
     uniform float uRadius;
     uniform float uScatter;
+    uniform float uTime;
+    uniform float uTreeHeight;
 
     uniform vec3 uHit;
 
@@ -367,27 +392,55 @@ materialPontos = new THREE.ShaderMaterial({
 
       }
 
+      // Direcção de dispersão
+
       vec3 direcao = normalize(
         position - uHit + aRand * 0.3 + vec3(0.0001)
       );
 
       float dispersao = uScatter * uStrength;
 
-      vec3 p = position + direcao * dispersao * zona;
+      vec3 p = position
+        + direcao * dispersao * zona;
 
       p += aRand * dispersao * 0.35 * zona;
 
+      // Varrimento luminoso vertical
+
+      float posicaoLuz = fract(uTime * 0.12);
+
+      float alturaLuz = posicaoLuz * uTreeHeight;
+
+      float distanciaLuz = abs(position.y - alturaLuz);
+
+      float scan = exp(
+        -pow(distanciaLuz / 0.09, 2.0)
+      );
+
+      // Brilho local e brilho do scan
+
+      float brilho = 1.0
+        + visibilidade * 1.5
+        + scan * 0.8;
+
       vec4 mv = modelViewMatrix * vec4(p, 1.0);
 
-      gl_PointSize = uSize * uPixelRatio
+      gl_PointSize = max(
+        1.0,
+        uSize * uPixelRatio
         * (uScale / max(-mv.z, 0.01))
-        * (0.8 + visibilidade * 2.0);
+        * (0.8 + visibilidade * 2.0)
+      );
 
       gl_Position = projectionMatrix * mv;
 
-      vColor = color * (1.0 + visibilidade * 1.5);
+      vColor = color * brilho;
 
-      vAlpha = visibilidade;
+      vAlpha = clamp(
+        visibilidade * (0.55 + scan * 0.7),
+        0.0,
+        1.0
+      );
 
     }
 
@@ -402,11 +455,19 @@ materialPontos = new THREE.ShaderMaterial({
 
       vec2 q = gl_PointCoord - vec2(0.5);
 
-      if (dot(q, q) > 0.25) discard;
+      float distancia = dot(q, q);
+
+      if (distancia > 0.25) discard;
+
+      float suavidade = 1.0 - smoothstep(
+        0.12,
+        0.25,
+        distancia
+      );
 
       gl_FragColor = vec4(
         vColor,
-        vAlpha
+        vAlpha * suavidade
       );
 
       #include <colorspace_fragment>
@@ -441,11 +502,9 @@ async function carregarModelo() {
   }
 
   const centro = new THREE.Vector3();
-
   caixa.getCenter(centro);
 
   const dimensoes = new THREE.Vector3();
-
   caixa.getSize(dimensoes);
 
   alturaArvore = dimensoes.y;
@@ -472,14 +531,11 @@ async function carregarModelo() {
 
       meshesModelo.push(obj);
 
-      obj.castShadow = true;
-      obj.receiveShadow = true;
-
     }
 
   });
 
-  // Enquadrar a árvore na vista inicial
+  // Enquadramento inicial
 
   camera.position.set(
     0,
@@ -494,6 +550,8 @@ async function carregarModelo() {
   );
 
   controls.update();
+
+  uniforms.uTreeHeight.value = alturaArvore;
 
   modeloCarregado = true;
 
@@ -546,7 +604,6 @@ async function carregarPontos() {
   );
 
   const n = Math.min(total, MAX_PONTOS);
-
   const passo = total / n;
 
   const posicoesOriginais = new Float32Array(n * 3);
@@ -605,7 +662,9 @@ async function carregarPontos() {
 
   const centroPontos = new THREE.Vector3();
 
-  centroPontos.addVectors(minimo, maximo).multiplyScalar(0.5);
+  centroPontos
+    .addVectors(minimo, maximo)
+    .multiplyScalar(0.5);
 
   const alturaPontos = maximo.y - minimo.y;
 
@@ -677,6 +736,8 @@ function tocar(x, y, camara, elemento) {
 
   const rect = elemento.getBoundingClientRect();
 
+  if (!rect.width || !rect.height) return;
+
   coordenadas.x =
     ((x - rect.left) / rect.width) * 2 - 1;
 
@@ -701,6 +762,12 @@ function tocar(x, y, camara, elemento) {
     interseccoes[0].point.clone()
   );
 
+  // Ignorar toques demasiado baixos, por exemplo no tronco
+
+  if (pontoLocal.y < alturaArvore * ALTURA_MINIMA_TOQUE) {
+    return;
+  }
+
   uniforms.uHit.value.copy(pontoLocal);
 
   ultimoToque = performance.now() / 1000;
@@ -717,7 +784,6 @@ function atualizarParticulas() {
   if (!pontosCarregados) return;
 
   const agora = performance.now() / 1000;
-
   const tempo = agora - ultimoToque;
 
   let intensidade = 0;
@@ -736,6 +802,43 @@ function atualizarParticulas() {
 
   uniforms.uStrength.value = intensidade;
 
+  uniforms.uTime.value += 0.016;
+
+}
+
+
+// ==================================================
+// EVENTOS DE TOQUE
+// ==================================================
+
+function adicionarEventosToque(elemento, camara) {
+
+  elemento.addEventListener('pointerdown', (e) => {
+
+    tocar(
+      e.clientX,
+      e.clientY,
+      camara,
+      elemento
+    );
+
+  });
+
+  elemento.addEventListener('pointermove', (e) => {
+
+    if (e.buttons > 0 || e.pointerType === 'touch') {
+
+      tocar(
+        e.clientX,
+        e.clientY,
+        camara,
+        elemento
+      );
+
+    }
+
+  });
+
 }
 
 
@@ -743,37 +846,9 @@ function atualizarParticulas() {
 // PRÉ-VISUALIZAÇÃO
 // ==================================================
 
-renderer.domElement.addEventListener(
-  'pointerdown',
-  (e) => {
-
-    tocar(
-      e.clientX,
-      e.clientY,
-      camera,
-      renderer.domElement
-    );
-
-  }
-);
-
-
-renderer.domElement.addEventListener(
-  'pointermove',
-  (e) => {
-
-    if (e.buttons || e.pointerType === 'touch') {
-
-      tocar(
-        e.clientX,
-        e.clientY,
-        camera,
-        renderer.domElement
-      );
-
-    }
-
-  }
+adicionarEventosToque(
+  renderer.domElement,
+  camera
 );
 
 
@@ -790,7 +865,6 @@ async function iniciarAR() {
   arAtivo = true;
 
   botaoAR.style.display = 'none';
-
   nota.style.display = 'none';
 
   try {
@@ -809,15 +883,54 @@ async function iniciarAR() {
 
     });
 
+    mindarAtivo = mindar;
+
     const {
       renderer: rendererAR,
       scene: sceneAR,
       camera: cameraAR
     } = mindar;
 
+    // Fundo transparente para deixar ver a câmara
+
+    sceneAR.background = null;
+
     rendererAR.setClearColor(0x000000, 0);
 
     rendererAR.domElement.style.background = 'transparent';
+
+    // IMPORTANTE:
+    // A cena AR precisa de iluminação própria.
+    // As luzes da pré-visualização não passam automaticamente
+    // para a cena criada pelo MindAR.
+
+    sceneAR.add(
+      new THREE.HemisphereLight(
+        0xffffff,
+        0x526047,
+        1.5
+      )
+    );
+
+    const luzAR = new THREE.DirectionalLight(
+      0xffffff,
+      2
+    );
+
+    luzAR.position.set(3, 5, 4);
+
+    sceneAR.add(luzAR);
+
+    const luzARSecundaria = new THREE.DirectionalLight(
+      0xffffff,
+      0.7
+    );
+
+    luzARSecundaria.position.set(-3, 2, -4);
+
+    sceneAR.add(luzARSecundaria);
+
+    // Criar âncora do marcador
 
     const ancora = mindar.addAnchor(0);
 
@@ -828,7 +941,6 @@ async function iniciarAR() {
     );
 
     arvore.position.set(0, 0, 0);
-
     arvore.rotation.set(0, 0, 0);
 
     ancora.group.add(arvore);
@@ -842,31 +954,11 @@ async function iniciarAR() {
     voltar.style.display = 'block';
     dica.style.display = 'block';
 
-    const aoToque = (e) => {
+    // Eventos de toque na árvore em AR
 
-      tocar(
-        e.clientX,
-        e.clientY,
-        cameraAR,
-        rendererAR.domElement
-      );
-
-    };
-
-    rendererAR.domElement.addEventListener(
-      'pointerdown',
-      aoToque
-    );
-
-    rendererAR.domElement.addEventListener(
-      'pointermove',
-      (e) => {
-
-        if (e.buttons || e.pointerType === 'touch') {
-          aoToque(e);
-        }
-
-      }
+    adicionarEventosToque(
+      rendererAR.domElement,
+      cameraAR
     );
 
     ancora.onTargetFound = () => {
@@ -877,17 +969,26 @@ async function iniciarAR() {
       dica.style.display = 'block';
     };
 
+    // Rotação e animação
+
     let ultimoTempo = performance.now();
 
     rendererAR.setAnimationLoop(() => {
 
       const agora = performance.now();
 
-      const delta = (agora - ultimoTempo) / 1000;
+      const delta = Math.min(
+        (agora - ultimoTempo) / 1000,
+        0.05
+      );
 
       ultimoTempo = agora;
 
       arvore.rotation.y += ROTACAO_AR * delta;
+
+      // Actualizar o tempo real do shader
+
+      uniforms.uTime.value += delta;
 
       atualizarParticulas();
 
@@ -902,12 +1003,30 @@ async function iniciarAR() {
 
     console.error(erro);
 
+    // Recuperar a pré-visualização se o AR falhar
+
+    if (mindarAtivo) {
+
+      try {
+        await mindarAtivo.stop();
+      } catch (e) {
+        console.warn(e);
+      }
+
+      mindarAtivo = null;
+
+    }
+
+    arContainer.style.display = 'none';
+    renderer.domElement.style.display = 'block';
+
     nota.textContent =
-      'Não foi possível iniciar a realidade aumentada. Verifica a câmara e o ficheiro do marcador.';
+      'Não foi possível iniciar a realidade aumentada. Verifica a câmara, o marcador e a ligação à Internet.';
 
     nota.style.display = 'block';
 
-    voltar.style.display = 'block';
+    voltar.style.display = 'none';
+    botaoAR.style.display = 'block';
 
     arAtivo = false;
 
@@ -950,6 +1069,9 @@ window.addEventListener('resize', () => {
   uniforms.uScale.value =
     window.innerHeight * 0.5;
 
+  uniforms.uPixelRatio.value =
+    renderer.getPixelRatio();
+
 });
 
 
@@ -968,8 +1090,6 @@ async function iniciar() {
     aviso.remove();
 
     renderer.setAnimationLoop(() => {
-
-      const delta = relogio.getDelta();
 
       controls.update();
 
