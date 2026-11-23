@@ -932,20 +932,30 @@ async function iniciarAR() {
 
     sceneAR.add(luzARSecundaria);
 
-    // Criar âncora do marcador
+   
+// Criar âncora do marcador
 
-    const ancora = mindar.addAnchor(0);
+const ancora = mindar.addAnchor(0);
 
-    // Dimensionar a árvore para o marcador
+// Dimensionar a árvore para o marcador
 
-    arvore.scale.setScalar(
-      ALTURA_AR / alturaArvore
-    );
+arvore.scale.setScalar(
+  ALTURA_AR / alturaArvore
+);
 
-    arvore.position.set(0, 0, 0);
-    arvore.rotation.set(0, 0, 0);
+arvore.position.set(0, 0, 0);
+arvore.rotation.set(0, 0, 0);
 
-    ancora.group.add(arvore);
+// Criar suporte para orientar a árvore perpendicularmente ao papel
+
+const suporteAR = new THREE.Group();
+
+suporteAR.rotation.x = Math.PI / 2;
+
+suporteAR.add(arvore);
+
+ancora.group.add(suporteAR);
+
 
     // Esconder a pré-visualização
 
