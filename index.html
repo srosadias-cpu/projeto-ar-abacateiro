@@ -539,21 +539,23 @@ async function carregarModelo() {
 
   camera.position.set(
     0,
-    alturaAr * 0.65,
-    alturaAr * 2.5
-  );
 
-  controls.target.set(
-    0,
-    alturaAr * 0.48,
-    0
-  );
+alturaArvore * 0.65,
+alturaArvore * 2.5
+);
 
-  controls.update();
+controls.target.set(
+  0,
+  alturaArvore * 0.48,
+  0
+);
 
-  uniforms.uTreeHeight.value = alturaArvore;
+controls.update();
 
-  modeloCarregado = true;
+uniforms.uTreeHeight.value = alturaArvore;
+
+modeloCarregado = true;
+
 
 }
 
