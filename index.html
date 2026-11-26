@@ -1,1137 +1,441 @@
-
 <!DOCTYPE html>
 <html lang="pt">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Abacateiro AR</title>
-
+<title>Árvores AR</title>
 <style>
-  html, body {
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #000;
-    font-family: system-ui, sans-serif;
-  }
-
-  canvas {
-    display: block;
-    touch-action: none;
-  }
-
-  #aviso {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #cfd8c8;
-    font-size: 15px;
-    text-align: center;
-    padding: 24px;
-    z-index: 20;
-  }
-
-  #arContainer {
-    position: fixed;
-    inset: 0;
-    display: none;
-    overflow: hidden;
-    z-index: 1;
-    background: transparent;
-    touch-action: none;
-  }
-
-  #arContainer canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    touch-action: none;
-  }
-
-  #overlay {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 10;
-  }
-
-  #overlay > * {
-    pointer-events: auto;
-  }
-
-  .btn {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 14px 26px;
-    border: 1px solid #cfd8c8;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.65);
-    color: #e9efe4;
-    text-decoration: none;
-    font-size: 15px;
-    white-space: nowrap;
-    font-family: inherit;
-    cursor: pointer;
-  }
-
-  #botaoAR {
-    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-  }
-
-  #voltar {
-    top: calc(20px + env(safe-area-inset-top, 0px));
-    display: none;
-  }
-
-  #dica {
-    position: fixed;
-    top: calc(80px + env(safe-area-inset-top, 0px));
-    left: 50%;
-    transform: translateX(-50%);
-    display: none;
-    padding: 10px 18px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.6);
-    color: #e9efe4;
-    font-size: 14px;
-    text-align: center;
-    max-width: 80%;
-  }
-
-  #nota {
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    text-align: center;
-    color: #b9c4b3;
-    font-size: 13px;
-    display: none;
-    bottom: calc(90px + env(safe-area-inset-bottom, 0px));
-  }
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif}
+canvas{display:block;touch-action:none}
+#aviso{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#cfd8c8;font-size:15px;text-align:center;padding:24px;z-index:20}
+#arContainer{position:fixed;inset:0;display:none;overflow:hidden;z-index:1;touch-action:none}
+#arContainer canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#overlay{position:fixed;inset:0;pointer-events:none;z-index:10}
+#overlay>*{pointer-events:auto}
+.btn,.tronco{border:1px solid #cfd8c8;border-radius:999px;background:rgba(0,0,0,.65);color:#e9efe4;font-size:15px;font-family:inherit;white-space:nowrap;cursor:pointer}
+.btn{position:fixed;left:50%;transform:translateX(-50%);padding:14px 26px}
+.tronco{position:fixed;transform:translate(-50%,-50%);display:none;padding:10px 18px;font-size:14px}
+#botaoAR{bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+#voltar{top:calc(20px + env(safe-area-inset-top,0px));display:none}
+#dica,#nota{position:fixed;left:50%;transform:translateX(-50%);display:none;padding:10px 18px;border-radius:999px;background:rgba(0,0,0,.6);color:#e9efe4;font-size:14px;text-align:center;max-width:80%}
+#dica{top:calc(80px + env(safe-area-inset-top,0px))}
+#nota{bottom:calc(90px + env(safe-area-inset-bottom,0px))}
 </style>
-
 <script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-    "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
-  }
-}
+{"imports":{
+"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+"three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+"mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}
 </script>
 </head>
-
 <body>
-
-<div id="aviso">A carregar o abacateiro…</div>
+<div id="aviso">A carregar…</div>
 <div id="arContainer"></div>
-
 <div id="overlay">
   <button id="voltar" class="btn" type="button">Voltar</button>
-  <div id="dica">Aponta a câmara para a imagem do abacateiro</div>
+  <div id="dica">Aponta a câmara para a imagem da árvore</div>
   <div id="nota"></div>
   <button id="botaoAR" class="btn" type="button">Ver no papel</button>
 </div>
 
 <script type="module">
-
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshSurfaceSampler } from 'three/addons/math/MeshSurfaceSampler.js';
 
-import { OrbitControls } from
-  'three/addons/controls/OrbitControls.js';
+// ================= CONFIGURAÇÃO =================
+// Para acrescentar uma árvore: copia um bloco, muda os nomes dos ficheiros
+// e o "alvo" (0 = 1.ª imagem do .mind, 1 = 2.ª, 2 = 3.ª).
+// O número de áudios define o número de sectores da copa (máx. 8).
+const ARVORES = [
+  {
+    modelo: 'models/arvore1.glb',
+    alvo: 0,
+    audios: ['audio/arvore1_1.mp3', 'audio/arvore1_2.mp3', 'audio/arvore1_3.mp3'],
+    link: '',                      // link do website (vazio = mostra "Website em construção")
+    textoBotao: 'Saber mais'
+  }
+];
+const MARCADOR = 'targets/targets.mind';   // um só ficheiro com todas as imagens, pela ordem dos alvos
 
-import { GLTFLoader } from
-  'three/addons/loaders/GLTFLoader.js';
+const N_AMOSTRAS = 150000;   // pontos gerados na superfície (só os da copa ficam)
+const TAMANHO_PONTO = 0.006; // diâmetro do ponto, em fração da altura da árvore
+const DISPERSAO = 0.35;      // distância da dispersão, em fração da altura
+const TEMPO_REGRESSO = 1.5;  // segundos até a árvore recompor
+const TRONCO_ATE = 0.35;     // fração da altura abaixo da qual é tronco
+const ALTURA_AR = 0.7;       // altura da árvore em AR (largura do marcador = 1)
+const LIMITE_ARRASTO = 12;   // px: acima disto o gesto passa a rodar a árvore
 
+// ================= BASE =================
+const $ = id => document.getElementById(id);
+const aviso = $('aviso'), botaoAR = $('botaoAR'), voltar = $('voltar'), dica = $('dica'), nota = $('nota'), arC = $('arContainer'), overlay = $('overlay');
+const _v = new THREE.Vector3(), _s = new THREE.Vector2();
+let arAtivo = false, carregado = false, autoRot = true, mindarAtivo = null;
 
-// ==================================================
-// FICHEIROS
-// ==================================================
-
-const MODELO = 'models/Abacateiro_Arvore3.glb';
-const FICHEIRO = 'pointclouds/abacateiro_pontos.bin';
-const MARCADOR = 'targets/targets.mind';
-
-
-// ==================================================
-// CONFIGURAÇÃO
-// ==================================================
-
-const MAX_PONTOS = 100000;
-
-const TAMANHO_PONTO = 0.012;
-const BRILHO = 1.3;
-
-const RAIO_TOQUE = 0.45;
-const FORCA_DISPERSAO = 0.28;
-const TEMPO_REGRESSO = 1.5;
-
-const ALTURA_AR = 0.7;
-const ROTACAO_AR = 0.15;
-
-// Evita activar partículas no tronco.
-// A zona de toque começa a 35% da altura da árvore.
-const ALTURA_MINIMA_TOQUE = 0.35;
-
-
-// ==================================================
-// ELEMENTOS HTML
-// ==================================================
-
-const aviso = document.getElementById('aviso');
-const botaoAR = document.getElementById('botaoAR');
-const voltar = document.getElementById('voltar');
-const dica = document.getElementById('dica');
-const nota = document.getElementById('nota');
-const arContainer = document.getElementById('arContainer');
-
-
-// ==================================================
-// THREE.JS: PRÉ-VISUALIZAÇÃO
-// ==================================================
-
-const renderer = new THREE.WebGLRenderer({
-  antialias: true,
-  alpha: false
-});
-
-renderer.setPixelRatio(
-  Math.min(window.devicePixelRatio, 2)
-);
-
-renderer.setSize(
-  window.innerWidth,
-  window.innerHeight
-);
-
-renderer.setClearColor(0x000000, 1);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
-
-
 const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 100);
 
-const camera = new THREE.PerspectiveCamera(
-  45,
-  window.innerWidth / window.innerHeight,
-  0.01,
-  100
-);
+function luzes(s) {
+  s.add(new THREE.HemisphereLight(0xffffff, 0x526047, 1.5));
+  const a = new THREE.DirectionalLight(0xffffff, 2); a.position.set(3, 5, 4); s.add(a);
+  const b = new THREE.DirectionalLight(0xffffff, 0.7); b.position.set(-3, 2, -4); s.add(b);
+}
+luzes(scene);
 
+function mostrarNota(t) {
+  nota.textContent = t; nota.style.display = 'block';
+  setTimeout(() => nota.style.display = 'none', 2500);
+}
 
-// Controlos da pré-visualização
+// ================= SHADERS =================
+// uCopa = (centro x, altura do tronco, centro z, nº de sectores)
+const GLSL_ZONA = `uniform vec4 uCopa; uniform float uZona[8];
+float zonaDe(vec3 p){ if(p.y<uCopa.y) return -1.;
+  float t=(atan(p.z-uCopa.z,p.x-uCopa.x)+3.14159265)/6.2831853;
+  return min(floor(t*uCopa.w),uCopa.w-1.); }`;
 
-const controls = new OrbitControls(
-  camera,
-  renderer.domElement
-);
+const VERT_PONTOS = `attribute vec3 aRand; attribute float aZona;
+uniform vec4 uCopa; uniform float uZona[8]; uniform float uSizeWorld, uScale, uScatter, uTime;
+varying vec3 vColor; varying float vAlpha;
+void main(){
+  float s=uZona[int(aZona)];
+  if(s<0.01){ gl_Position=vec4(2.,2.,2.,1.); gl_PointSize=0.; vColor=vec3(0.); vAlpha=0.; return; }
+  float e=s*s*(3.-2.*s);
+  vec3 dir=normalize(vec3(position.x-uCopa.x,0.4,position.z-uCopa.z)+aRand*0.8);
+  vec3 p=position+dir*uScatter*e*(0.4+0.6*abs(aRand.x));
+  p+=aRand*0.15*uScatter*e*sin(uTime*1.5+aRand.y*6.28);
+  vec4 mv=modelViewMatrix*vec4(p,1.);
+  gl_PointSize=max(1.5,uSizeWorld*uScale/max(-mv.z,0.01));
+  gl_Position=projectionMatrix*mv;
+  vColor=color; vAlpha=clamp(s*1.5,0.,1.);
+}`;
+const FRAG_PONTOS = `varying vec3 vColor; varying float vAlpha;
+void main(){ vec2 q=gl_PointCoord-.5; float d=dot(q,q); if(d>.25) discard;
+  gl_FragColor=vec4(vColor,vAlpha*(1.-smoothstep(.12,.25,d)));
+  #include <colorspace_fragment>
+}`;
 
-controls.enableDamping = true;
-controls.autoRotate = true;
-controls.autoRotateSpeed = 0.6;
-
-
-// Iluminação da pré-visualização
-
-scene.add(
-  new THREE.HemisphereLight(
-    0xffffff,
-    0x526047,
-    1.5
-  )
-);
-
-const luzPrincipal = new THREE.DirectionalLight(
-  0xffffff,
-  2
-);
-
-luzPrincipal.position.set(3, 5, 4);
-scene.add(luzPrincipal);
-
-
-// ==================================================
-// GRUPOS DA ÁRVORE
-// ==================================================
-
-const arvore = new THREE.Group();
-scene.add(arvore);
-
-const modelo = new THREE.Group();
-arvore.add(modelo);
-
-const grupoPontos = new THREE.Group();
-arvore.add(grupoPontos);
-
-
-// ==================================================
-// VARIÁVEIS
-// ==================================================
-
-let alturaArvore = 2;
-
-let modeloCarregado = false;
-let pontosCarregados = false;
-let arAtivo = false;
-
-let meshesModelo = [];
-
-let posicoes = null;
-let nPontos = 0;
-
-let pontos = null;
-let materialPontos = null;
-
-let ultimoToque = -1000;
-
-let mindarAtivo = null;
-
-const relogio = new THREE.Clock();
-
-
-// ==================================================
-// MATERIAL DAS PARTÍCULAS
-// ==================================================
-
-const uniforms = {
-
-  uSize: {
-    value: TAMANHO_PONTO
-  },
-
-  uPixelRatio: {
-    value: renderer.getPixelRatio()
-  },
-
-  uScale: {
-    value: window.innerHeight * 0.5
-  },
-
-  uHit: {
-    value: new THREE.Vector3()
-  },
-
-  uStrength: {
-    value: 0
-  },
-
-  uRadius: {
-    value: RAIO_TOQUE
-  },
-
-  uScatter: {
-    value: FORCA_DISPERSAO
-  },
-
-  uTime: {
-    value: 0
-  },
-
-  uTreeHeight: {
-    value: 1
+// ================= ÁRVORE =================
+class Arvore {
+  constructor(cfg) {
+    this.cfg = cfg;
+    this.n = Math.min(cfg.audios.length, 8) || 1;
+    this.grupo = new THREE.Group();
+    this.forca = new Float32Array(8);
+    this.premida = -1;
+    this.audios = cfg.audios.map(src => { const a = new Audio(src); a.loop = true; a.preload = 'auto'; return a; });
+    this.u = {
+      uCopa: { value: new THREE.Vector4() }, uZona: { value: Array(8).fill(0) },
+      uInv: { value: new THREE.Matrix4() }, uSizeWorld: { value: 0 },
+      uScale: { value: 1 }, uScatter: { value: 0 }, uTime: { value: 0 }
+    };
+    this.btn = document.createElement('button');
+    this.btn.className = 'tronco';
+    this.btn.textContent = cfg.textoBotao || 'Saber mais';
+    this.btn.onclick = () => cfg.link ? window.open(cfg.link, '_blank') : mostrarNota('Website em construção');
+    overlay.appendChild(this.btn);
   }
 
-};
+  zonaDe(p) {
+    const c = this.u.uCopa.value;
+    if (p.y < c.y) return -1;
+    const t = (Math.atan2(p.z - c.z, p.x - c.x) + Math.PI) / (2 * Math.PI);
+    return Math.min(Math.floor(t * this.n), this.n - 1);
+  }
 
+  async carregar() {
+    const gltf = await new GLTFLoader().loadAsync(this.cfg.modelo);
+    const m = gltf.scene, g = this.grupo;
+    g.add(m); m.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(m), c = box.getCenter(new THREE.Vector3());
+    this.alt = box.max.y - box.min.y;
+    if (!(this.alt > 0)) throw new Error('Modelo sem geometria: ' + this.cfg.modelo);
+    m.position.set(-c.x, -box.min.y, -c.z);
+    g.updateMatrixWorld(true);
+    const meshes = [];
+    m.traverse(o => o.isMesh && meshes.push(o));
+    meshes.forEach(o => this.dissolver(o));
+    this.criarPontos(meshes);
+  }
 
-materialPontos = new THREE.ShaderMaterial({
+  // O modelo realista desfaz-se por zona (descarta fragmentos com ruído)
+  dissolver(o) {
+    const u = this.u;
+    [].concat(o.material).forEach(mt => {
+      mt.onBeforeCompile = s => {
+        Object.assign(s.uniforms, u);
+        s.vertexShader = 'uniform mat4 uInv; varying vec3 vTP;\n' + s.vertexShader.replace('#include <project_vertex>',
+          '#include <project_vertex>\nvTP=(uInv*modelMatrix*vec4(transformed,1.)).xyz;');
+        s.fragmentShader = 'varying vec3 vTP;\n' + GLSL_ZONA + '\n' + s.fragmentShader.replace('#include <clipping_planes_fragment>',
+          '#include <clipping_planes_fragment>\n{float z=zonaDe(vTP); if(z>=0.){ float s=uZona[int(z)];' +
+          ' if(s>.001 && fract(sin(dot(vTP,vec3(12.9898,78.233,37.719))*40.)*43758.5453)<s*1.05) discard; }}');
+      };
+      mt.customProgramCacheKey = () => 'dissolve';
+      mt.needsUpdate = true;
+    });
+  }
 
-  uniforms,
-
-  vertexColors: true,
-  transparent: true,
-  depthWrite: false,
-  depthTest: true,
-  blending: THREE.AdditiveBlending,
-
-  vertexShader: `
-
-    attribute vec3 aRand;
-
-    uniform float uSize;
-    uniform float uPixelRatio;
-    uniform float uScale;
-    uniform float uStrength;
-    uniform float uRadius;
-    uniform float uScatter;
-    uniform float uTime;
-    uniform float uTreeHeight;
-
-    uniform vec3 uHit;
-
-    varying vec3 vColor;
-    varying float vAlpha;
-
-    void main() {
-
-      float distancia = distance(position, uHit);
-
-      float zona = 1.0 - smoothstep(
-        uRadius * 0.65,
-        uRadius,
-        distancia
-      );
-
-      float visibilidade = zona * uStrength;
-
-      if (visibilidade < 0.01) {
-
-        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-        gl_PointSize = 0.0;
-
-        vColor = vec3(0.0);
-        vAlpha = 0.0;
-
-        return;
-
+  // Nuvem de pontos gerada a partir do próprio modelo (mesma forma, mesmas cores)
+  criarPontos(meshes) {
+    const rel = new THREE.Matrix4().copy(this.grupo.matrixWorld).invert();
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    let total = 0;
+    const info = meshes.map(o => {
+      const pos = o.geometry.attributes.position, idx = o.geometry.index;
+      const M = new THREE.Matrix4().multiplyMatrices(rel, o.matrixWorld);
+      let A = 0;
+      const nt = (idx ? idx.count : pos.count) / 3;
+      for (let i = 0; i < nt; i++) {
+        const f = j => idx ? idx.getX(i * 3 + j) : i * 3 + j;
+        a.fromBufferAttribute(pos, f(0)); b.fromBufferAttribute(pos, f(1)); c.fromBufferAttribute(pos, f(2));
+        A += b.sub(a).cross(c.sub(a)).length() / 2;
       }
+      A *= M.getMaxScaleOnAxis() ** 2; total += A;
+      return { o, M, A };
+    });
 
-      // Direcção de dispersão
-
-      vec3 direcao = normalize(
-        position - uHit + aRand * 0.3 + vec3(0.0001)
-      );
-
-      float dispersao = uScatter * uStrength;
-
-      vec3 p = position
-        + direcao * dispersao * zona;
-
-      p += aRand * dispersao * 0.35 * zona;
-
-      // Varrimento luminoso vertical
-
-      float posicaoLuz = fract(uTime * 0.12);
-
-      float alturaLuz = posicaoLuz * uTreeHeight;
-
-      float distanciaLuz = abs(position.y - alturaLuz);
-
-      float scan = exp(
-        -pow(distanciaLuz / 0.09, 2.0)
-      );
-
-      // Brilho local e brilho do scan
-
-      float brilho = 1.0
-        + visibilidade * 1.5
-        + scan * 0.8;
-
-      vec4 mv = modelViewMatrix * vec4(p, 1.0);
-
-      gl_PointSize = max(
-        1.0,
-        uSize * uPixelRatio
-        * (uScale / max(-mv.z, 0.01))
-        * (0.8 + visibilidade * 2.0)
-      );
-
-      gl_Position = projectionMatrix * mv;
-
-      vColor = color * brilho;
-
-      vAlpha = clamp(
-        visibilidade * (0.55 + scan * 0.7),
-        0.0,
-        1.0
-      );
-
+    const P = [], C = [];
+    const p = new THREE.Vector3(), n = new THREE.Vector3(), cc = new THREE.Color(), col = new THREE.Color(), uv = new THREE.Vector2();
+    for (const { o, M, A } of info) {
+      const k = Math.round(N_AMOSTRAS * A / total);
+      if (!k) continue;
+      const mat = [].concat(o.material)[0];
+      let t = null;
+      const im = mat.map && mat.map.image;
+      if (im) {
+        const w = Math.min(im.width, 1024), h = Math.min(im.height, 1024);
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        const x = cv.getContext('2d', { willReadFrequently: true });
+        x.drawImage(im, 0, 0, w, h);
+        t = { d: x.getImageData(0, 0, w, h).data, w, h };
+      }
+      const vc = !!o.geometry.attributes.color;
+      const s = new MeshSurfaceSampler(o).build();
+      for (let i = 0, tent = 0; i < k && tent < k * 4; tent++) {
+        s.sample(p, n, cc, uv);
+        if (t) {
+          const px = Math.min(t.w - 1, Math.floor((uv.x - Math.floor(uv.x)) * t.w));
+          const py = Math.min(t.h - 1, Math.floor((uv.y - Math.floor(uv.y)) * t.h));
+          const j = (py * t.w + px) * 4;
+          if (t.d[j + 3] < 128) continue;          // salta zonas transparentes das folhas
+          col.setRGB(t.d[j] / 255, t.d[j + 1] / 255, t.d[j + 2] / 255, THREE.SRGBColorSpace);
+        } else col.setRGB(1, 1, 1);
+        col.multiply(mat.color);
+        if (vc) col.multiply(cc);
+        p.applyMatrix4(M);
+        P.push(p.x, p.y, p.z); C.push(col.r, col.g, col.b);
+        i++;
+      }
     }
 
-  `,
-
-  fragmentShader: `
-
-    varying vec3 vColor;
-    varying float vAlpha;
-
-    void main() {
-
-      vec2 q = gl_PointCoord - vec2(0.5);
-
-      float distancia = dot(q, q);
-
-      if (distancia > 0.25) discard;
-
-      float suavidade = 1.0 - smoothstep(
-        0.12,
-        0.25,
-        distancia
-      );
-
-      gl_FragColor = vec4(
-        vColor,
-        vAlpha * suavidade
-      );
-
-      #include <colorspace_fragment>
-
+    const H = this.alt, ty = H * TRONCO_ATE;
+    const mn = new THREE.Vector3(1e9, 1e9, 1e9), mx = new THREE.Vector3(-1e9, -1e9, -1e9);
+    let sx = 0, sz = 0, ns = 0;
+    for (let i = 0; i < P.length; i += 3) {
+      _v.set(P[i], P[i + 1], P[i + 2]);
+      if (_v.y >= ty) { mn.min(_v); mx.max(_v); }
+      else if (_v.y > H * 0.05) { sx += _v.x; sz += _v.z; ns++; }
     }
+    if (mn.x > mx.x) throw new Error('Não encontrei copa acima do tronco (ajusta TRONCO_ATE).');
+    const cx = (mn.x + mx.x) / 2, cy = (mn.y + mx.y) / 2, cz = (mn.z + mx.z) / 2;
+    this.u.uCopa.value.set(cx, ty, cz, this.n);
+    this.pBtn = new THREE.Vector3(ns ? sx / ns : cx, ty * 0.55, ns ? sz / ns : cz);
 
-  `
+    const pos = [], cor = [], rnd = [], zon = [];
+    for (let i = 0; i < P.length; i += 3) {
+      if (P[i + 1] < ty) continue;
+      _v.set(P[i], P[i + 1], P[i + 2]);
+      pos.push(P[i], P[i + 1], P[i + 2]); cor.push(C[i], C[i + 1], C[i + 2]);
+      rnd.push(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1);
+      zon.push(this.zonaDe(_v));
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(cor, 3));
+    geo.setAttribute('aRand', new THREE.Float32BufferAttribute(rnd, 3));
+    geo.setAttribute('aZona', new THREE.Float32BufferAttribute(zon, 1));
+    this.pts = new THREE.Points(geo, new THREE.ShaderMaterial({
+      uniforms: this.u, vertexShader: VERT_PONTOS, fragmentShader: FRAG_PONTOS,
+      vertexColors: true, transparent: true, depthWrite: false
+    }));
+    this.pts.frustumCulled = false; this.pts.visible = false;
+    this.grupo.add(this.pts);
 
-});
-
-
-// ==================================================
-// CARREGAR MODELO GLB
-// ==================================================
-
-async function carregarModelo() {
-
-  const loader = new GLTFLoader();
-
-  const gltf = await loader.loadAsync(MODELO);
-
-  modelo.add(gltf.scene);
-
-  gltf.scene.updateMatrixWorld(true);
-
-  const caixa = new THREE.Box3().setFromObject(
-    gltf.scene
-  );
-
-  if (caixa.isEmpty()) {
-    throw new Error('O modelo GLB não contém geometria.');
+    // Elipsoide invisível a envolver a copa: toque rápido e barato
+    this.proxy = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ visible: false }));
+    this.proxy.position.set(cx, cy, cz);
+    this.proxy.scale.set((mx.x - mn.x) / 2, (mx.y - mn.y) / 2, (mx.z - mn.z) / 2);
+    this.grupo.add(this.proxy);
   }
 
-  const centro = new THREE.Vector3();
-  caixa.getCenter(centro);
-
-  const dimensoes = new THREE.Vector3();
-  caixa.getSize(dimensoes);
-
-  alturaArvore = dimensoes.y;
-
-  if (alturaArvore <= 0) {
-    throw new Error('Não foi possível determinar a altura da árvore.');
+  visivel() {
+    for (let o = this.grupo; o; o = o.parent) if (!o.visible) return false;
+    return !!this.grupo.parent;
   }
 
-  // Centrar a árvore e colocar a base no nível zero
+  zonaTocada(ray) {
+    this.grupo.updateMatrixWorld(true);
+    const h = ray.intersectObject(this.proxy, false)[0];
+    return h ? this.zonaDe(this.grupo.worldToLocal(h.point.clone())) : -1;
+  }
 
-  gltf.scene.position.x -= centro.x;
-  gltf.scene.position.y -= caixa.min.y;
-  gltf.scene.position.z -= centro.z;
+  premir(z) {
+    this.premida = z;
+    const a = this.audios[z];
+    if (a) a.play().catch(() => {});   // tem de ser chamado dentro do toque
+  }
+  largar() { this.premida = -1; }
 
-  gltf.scene.updateMatrixWorld(true);
-
-  // Guardar os meshes para detectar os toques
-
-  meshesModelo = [];
-
-  gltf.scene.traverse((obj) => {
-
-    if (obj.isMesh) {
-
-      meshesModelo.push(obj);
-
+  atualizar(dt, cam, alturaPx) {
+    const u = this.u;
+    u.uTime.value += dt;
+    this.grupo.updateWorldMatrix(true, false);
+    u.uInv.value.copy(this.grupo.matrixWorld).invert();
+    u.uSizeWorld.value = TAMANHO_PONTO * this.alt * this.grupo.scale.x;
+    u.uScatter.value = DISPERSAO * this.alt;
+    u.uScale.value = alturaPx / (2 * Math.tan(cam.fov * Math.PI / 360));
+    let ativo = false;
+    for (let z = 0; z < this.n; z++) {
+      const alvo = this.premida === z ? 1 : 0;
+      let f = this.forca[z];
+      f = alvo > f ? Math.min(1, f + dt * 3) : Math.max(0, f - dt / TEMPO_REGRESSO);
+      this.forca[z] = f; u.uZona.value[z] = f;
+      if (f > 0) ativo = true;
+      const a = this.audios[z];
+      if (a) { try { a.volume = Math.min(1, f * 2); if (!alvo && f === 0 && !a.paused) a.pause(); } catch (e) {} }
     }
+    if (this.pts) this.pts.visible = ativo;
+  }
 
+  posicionarBotao(cam, mostrar) {
+    if (!mostrar || !this.pBtn || !this.visivel()) { this.btn.style.display = 'none'; return; }
+    _v.copy(this.pBtn); this.grupo.localToWorld(_v); _v.project(cam);
+    if (_v.z > 1) { this.btn.style.display = 'none'; return; }
+    this.btn.style.display = 'block';
+    this.btn.style.left = (_v.x * 0.5 + 0.5) * innerWidth + 'px';
+    this.btn.style.top = (-_v.y * 0.5 + 0.5) * innerHeight + 'px';
+  }
+}
+
+const arvores = ARVORES.map(c => new Arvore(c));
+
+// ================= GESTOS =================
+// Tocar e manter na copa = dispersão + áudio. Arrastar (ou tocar fora da copa) = rodar.
+function ligarGestos(el, cam, ativas) {
+  const ray = new THREE.Raycaster(), nd = new THREE.Vector2();
+  let e0 = null;
+  el.addEventListener('pointerdown', e => {
+    if (!e.isPrimary) return;
+    autoRot = false;
+    el.setPointerCapture(e.pointerId);
+    const r = el.getBoundingClientRect();
+    nd.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
+    ray.setFromCamera(nd, cam);
+    e0 = { x: e.clientX, y: e.clientY, ult: e.clientX, arv: null };
+    for (const a of ativas()) {
+      const z = a.zonaTocada(ray);
+      if (z >= 0) { a.premir(z); e0.arv = a; break; }
+    }
   });
-
-  // Enquadramento inicial
-
-  camera.position.set(
-    0,
-
-alturaArvore * 0.65,
-alturaArvore * 2.5
-);
-
-controls.target.set(
-  0,
-  alturaArvore * 0.48,
-  0
-);
-
-controls.update();
-
-uniforms.uTreeHeight.value = alturaArvore;
-
-modeloCarregado = true;
-
-
-}
-
-
-// ==================================================
-// CARREGAR NUVEM DE PONTOS
-// ==================================================
-
-async function carregarPontos() {
-
-  const resposta = await fetch(FICHEIRO);
-
-  if (!resposta.ok) {
-    throw new Error('Não foi possível carregar ' + FICHEIRO);
-  }
-
-  const buffer = await resposta.arrayBuffer();
-
-  if (buffer.byteLength < 8) {
-    throw new Error('O ficheiro BIN está incompleto.');
-  }
-
-  const dados = new DataView(buffer);
-
-  const total = dados.getUint32(0, true);
-  const escala = dados.getFloat32(4, true);
-
-  if (!total || !escala) {
-    throw new Error('O cabeçalho do ficheiro BIN é inválido.');
-  }
-
-  const tamanhoEsperado = 8 + total * 9;
-
-  if (buffer.byteLength < tamanhoEsperado) {
-    throw new Error('O ficheiro BIN não contém todos os pontos.');
-  }
-
-  const pos16 = new Int16Array(
-    buffer,
-    8,
-    total * 3
-  );
-
-  const cor8 = new Uint8Array(
-    buffer,
-    8 + total * 6,
-    total * 3
-  );
-
-  const n = Math.min(total, MAX_PONTOS);
-  const passo = total / n;
-
-  const posicoesOriginais = new Float32Array(n * 3);
-  const cores = new Float32Array(n * 3);
-  const aleatorio = new Float32Array(n * 3);
-
-  const minimo = new THREE.Vector3(
-    Infinity,
-    Infinity,
-    Infinity
-  );
-
-  const maximo = new THREE.Vector3(
-    -Infinity,
-    -Infinity,
-    -Infinity
-  );
-
-  const cor = new THREE.Color();
-
-  // Ler posições e cores
-
-  for (let i = 0; i < n; i++) {
-
-    const j = Math.floor(i * passo);
-
-    const x = pos16[j * 3] / escala;
-    const y = pos16[j * 3 + 1] / escala;
-    const z = pos16[j * 3 + 2] / escala;
-
-    posicoesOriginais[i * 3] = x;
-    posicoesOriginais[i * 3 + 1] = y;
-    posicoesOriginais[i * 3 + 2] = z;
-
-    minimo.min(new THREE.Vector3(x, y, z));
-    maximo.max(new THREE.Vector3(x, y, z));
-
-    cor.setRGB(
-      Math.min(cor8[j * 3] / 255 * BRILHO, 1),
-      Math.min(cor8[j * 3 + 1] / 255 * BRILHO, 1),
-      Math.min(cor8[j * 3 + 2] / 255 * BRILHO, 1),
-      THREE.SRGBColorSpace
-    );
-
-    cores[i * 3] = cor.r;
-    cores[i * 3 + 1] = cor.g;
-    cores[i * 3 + 2] = cor.b;
-
-    aleatorio[i * 3] = Math.random() * 2 - 1;
-    aleatorio[i * 3 + 1] = Math.random() * 2 - 1;
-    aleatorio[i * 3 + 2] = Math.random() * 2 - 1;
-
-  }
-
-  // Ajustar a nuvem à dimensão do modelo GLB
-
-  const centroPontos = new THREE.Vector3();
-
-  centroPontos
-    .addVectors(minimo, maximo)
-    .multiplyScalar(0.5);
-
-  const alturaPontos = maximo.y - minimo.y;
-
-  if (alturaPontos <= 0) {
-    throw new Error('A nuvem de pontos não tem uma altura válida.');
-  }
-
-  const fator = alturaArvore / alturaPontos;
-
-  posicoes = new Float32Array(n * 3);
-
-  for (let i = 0; i < n; i++) {
-
-    posicoes[i * 3] =
-      (posicoesOriginais[i * 3] - centroPontos.x) * fator;
-
-    posicoes[i * 3 + 1] =
-      (posicoesOriginais[i * 3 + 1] - minimo.y) * fator;
-
-    posicoes[i * 3 + 2] =
-      (posicoesOriginais[i * 3 + 2] - centroPontos.z) * fator;
-
-  }
-
-  nPontos = n;
-
-  const geometria = new THREE.BufferGeometry();
-
-  geometria.setAttribute(
-    'position',
-    new THREE.BufferAttribute(posicoes, 3)
-  );
-
-  geometria.setAttribute(
-    'color',
-    new THREE.BufferAttribute(cores, 3)
-  );
-
-  geometria.setAttribute(
-    'aRand',
-    new THREE.BufferAttribute(aleatorio, 3)
-  );
-
-  pontos = new THREE.Points(
-    geometria,
-    materialPontos
-  );
-
-  pontos.frustumCulled = false;
-
-  grupoPontos.add(pontos);
-
-  pontosCarregados = true;
-
-}
-
-
-// ==================================================
-// DETECTAR TOQUES NA ÁRVORE
-// ==================================================
-
-const raycaster = new THREE.Raycaster();
-
-const coordenadas = new THREE.Vector2();
-
-function tocar(x, y, camara, elemento) {
-
-  if (!modeloCarregado || !pontosCarregados) return;
-
-  const rect = elemento.getBoundingClientRect();
-
-  if (!rect.width || !rect.height) return;
-
-  coordenadas.x =
-    ((x - rect.left) / rect.width) * 2 - 1;
-
-  coordenadas.y =
-    -((y - rect.top) / rect.height) * 2 + 1;
-
-  arvore.updateMatrixWorld(true);
-
-  raycaster.setFromCamera(
-    coordenadas,
-    camara
-  );
-
-  const interseccoes = raycaster.intersectObjects(
-    meshesModelo,
-    true
-  );
-
-  if (interseccoes.length === 0) return;
-
-  const pontoLocal = arvore.worldToLocal(
-    interseccoes[0].point.clone()
-  );
-
-  // Ignorar toques demasiado baixos, por exemplo no tronco
-
-  if (pontoLocal.y < alturaArvore * ALTURA_MINIMA_TOQUE) {
-    return;
-  }
-
-  uniforms.uHit.value.copy(pontoLocal);
-
-  ultimoToque = performance.now() / 1000;
-
-}
-
-
-// ==================================================
-// ANIMAÇÃO DAS PARTÍCULAS
-// ==================================================
-
-function atualizarParticulas() {
-
-  if (!pontosCarregados) return;
-
-  const agora = performance.now() / 1000;
-  const tempo = agora - ultimoToque;
-
-  let intensidade = 0;
-
-  if (tempo >= 0) {
-
-    intensidade = Math.exp(
-      -tempo * (3 / TEMPO_REGRESSO)
-    );
-
-  }
-
-  if (intensidade < 0.01) {
-    intensidade = 0;
-  }
-
-  uniforms.uStrength.value = intensidade;
-
-  uniforms.uTime.value += 0.016;
-
-}
-
-
-// ==================================================
-// EVENTOS DE TOQUE
-// ==================================================
-
-function adicionarEventosToque(elemento, camara) {
-
-  elemento.addEventListener('pointerdown', (e) => {
-
-    tocar(
-      e.clientX,
-      e.clientY,
-      camara,
-      elemento
-    );
-
-  });
-
-  elemento.addEventListener('pointermove', (e) => {
-
-    if (e.buttons > 0 || e.pointerType === 'touch') {
-
-      tocar(
-        e.clientX,
-        e.clientY,
-        camara,
-        elemento
-      );
-
+  el.addEventListener('pointermove', e => {
+    if (!e0 || !e.isPrimary) return;
+    if (e0.arv && Math.hypot(e.clientX - e0.x, e.clientY - e0.y) > LIMITE_ARRASTO) { e0.arv.largar(); e0.arv = null; }
+    if (!e0.arv) {
+      const dx = e.clientX - e0.ult;
+      ativas().forEach(a => a.grupo.rotation.y += dx * 0.01);
     }
-
+    e0.ult = e.clientX;
   });
-
+  const fim = () => { if (e0 && e0.arv) e0.arv.largar(); e0 = null; };
+  el.addEventListener('pointerup', fim);
+  el.addEventListener('pointercancel', fim);
 }
 
-
-// ==================================================
-// PRÉ-VISUALIZAÇÃO
-// ==================================================
-
-adicionarEventosToque(
-  renderer.domElement,
-  camera
-);
-
-
-// ==================================================
-// INICIAR REALIDADE AUMENTADA
-// ==================================================
-
+// ================= AR =================
 async function iniciarAR() {
-
-  if (arAtivo || !modeloCarregado || !pontosCarregados) {
-    return;
-  }
-
-  arAtivo = true;
-
-  botaoAR.style.display = 'none';
-  nota.style.display = 'none';
-
+  if (arAtivo || !carregado) return;
+  arAtivo = true; botaoAR.style.display = 'none';
   try {
-
-    const { MindARThree } = await import(
-      'mindar-image-three'
-    );
-
-    arContainer.style.display = 'block';
-
-    const mindar = new MindARThree({
-
-      container: arContainer,
-
-      imageTargetSrc: MARCADOR
-
-    });
-
+    const { MindARThree } = await import('mindar-image-three');
+    arC.style.display = 'block';
+    const mindar = new MindARThree({ container: arC, imageTargetSrc: MARCADOR, uiLoading: 'no', uiScanning: 'no', uiError: 'no' });
     mindarAtivo = mindar;
+    const { renderer: r, scene: s, camera: cam } = mindar;
+    s.background = null; r.setClearColor(0x000000, 0);
+    luzes(s);
 
-    const {
-      renderer: rendererAR,
-      scene: sceneAR,
-      camera: cameraAR
-    } = mindar;
-
-    // Fundo transparente para deixar ver a câmara
-
-    sceneAR.background = null;
-
-    rendererAR.setClearColor(0x000000, 0);
-
-    rendererAR.domElement.style.background = 'transparent';
-
-    // IMPORTANTE:
-    // A cena AR precisa de iluminação própria.
-    // As luzes da pré-visualização não passam automaticamente
-    // para a cena criada pelo MindAR.
-
-    sceneAR.add(
-      new THREE.HemisphereLight(
-        0xffffff,
-        0x526047,
-        1.5
-      )
-    );
-
-    const luzAR = new THREE.DirectionalLight(
-      0xffffff,
-      2
-    );
-
-    luzAR.position.set(3, 5, 4);
-
-    sceneAR.add(luzAR);
-
-    const luzARSecundaria = new THREE.DirectionalLight(
-      0xffffff,
-      0.7
-    );
-
-    luzARSecundaria.position.set(-3, 2, -4);
-
-    sceneAR.add(luzARSecundaria);
-
-   
-// Criar âncora do marcador
-
-const ancora = mindar.addAnchor(0);
-
-// Dimensionar a árvore para o marcador
-
-arvore.scale.setScalar(
-  ALTURA_AR / alturaArvore
-);
-
-arvore.position.set(0, 0, 0);
-arvore.rotation.set(0, 0, 0);
-
-// Criar suporte para orientar a árvore perpendicularmente ao papel
-
-const suporteAR = new THREE.Group();
-
-suporteAR.rotation.x = Math.PI / 2;
-
-suporteAR.add(arvore);
-
-ancora.group.add(suporteAR);
-
-
-    // Esconder a pré-visualização
-
-    renderer.domElement.style.display = 'none';
-
-    await mindar.start();
-
-    voltar.style.display = 'block';
-    dica.style.display = 'block';
-
-    // Eventos de toque na árvore em AR
-
-    adicionarEventosToque(
-      rendererAR.domElement,
-      cameraAR
-    );
-
-    ancora.onTargetFound = () => {
-      dica.style.display = 'none';
-    };
-
-    ancora.onTargetLost = () => {
-      dica.style.display = 'block';
-    };
-
-    // Rotação e animação
-
-    let ultimoTempo = performance.now();
-
-    rendererAR.setAnimationLoop(() => {
-
-      const agora = performance.now();
-
-      const delta = Math.min(
-        (agora - ultimoTempo) / 1000,
-        0.05
-      );
-
-      ultimoTempo = agora;
-
-      arvore.rotation.y += ROTACAO_AR * delta;
-
-      // Actualizar o tempo real do shader
-
-      uniforms.uTime.value += delta;
-
-      atualizarParticulas();
-
-      rendererAR.render(
-        sceneAR,
-        cameraAR
-      );
-
+    arvores.forEach(a => {
+      const anc = mindar.addAnchor(a.cfg.alvo);
+      const sup = new THREE.Group();
+      sup.rotation.x = Math.PI / 2;            // árvore perpendicular ao papel
+      a.grupo.scale.setScalar(ALTURA_AR / a.alt);
+      a.grupo.position.set(0, 0, 0); a.grupo.rotation.set(0, 0, 0);
+      sup.add(a.grupo); anc.group.add(sup);
+      anc.onTargetFound = () => { dica.style.display = 'none'; };
+      anc.onTargetLost = () => { dica.style.display = 'block'; };
     });
 
+    renderer.setAnimationLoop(null);
+    renderer.domElement.style.display = 'none';
+    await mindar.start();
+    voltar.style.display = 'block'; dica.style.display = 'block';
+    ligarGestos(r.domElement, cam, () => arvores.filter(a => a.visivel()));
+
+    let t0 = performance.now();
+    r.setAnimationLoop(() => {
+      const t = performance.now(), dt = Math.min((t - t0) / 1000, 0.05); t0 = t;
+      const H = r.getDrawingBufferSize(_s).y;
+      arvores.forEach(a => { a.atualizar(dt, cam, H); a.posicionarBotao(cam, true); });
+      r.render(s, cam);
+    });
   } catch (erro) {
-
     console.error(erro);
-
-    // Recuperar a pré-visualização se o AR falhar
-
-    if (mindarAtivo) {
-
-      try {
-        await mindarAtivo.stop();
-      } catch (e) {
-        console.warn(e);
-      }
-
-      mindarAtivo = null;
-
-    }
-
-    arContainer.style.display = 'none';
-    renderer.domElement.style.display = 'block';
-
-    nota.textContent =
-      'Não foi possível iniciar a realidade aumentada. Verifica a câmara, o marcador e a ligação à Internet.';
-
-    nota.style.display = 'block';
-
-    voltar.style.display = 'none';
-    botaoAR.style.display = 'block';
-
+    if (mindarAtivo) { try { await mindarAtivo.stop(); } catch (e) {} mindarAtivo = null; }
+    arC.style.display = 'none'; renderer.domElement.style.display = 'block';
+    mostrarNota('Não foi possível iniciar a realidade aumentada. Verifica a câmara, o marcador e a ligação.');
+    voltar.style.display = 'none'; botaoAR.style.display = 'block';
     arAtivo = false;
-
+    location.reload();
   }
-
 }
+botaoAR.addEventListener('click', iniciarAR);
+voltar.addEventListener('click', () => location.reload());
 
-
-// ==================================================
-// BOTÕES
-// ==================================================
-
-botaoAR.addEventListener(
-  'click',
-  iniciarAR
-);
-
-voltar.addEventListener(
-  'click',
-  () => location.reload()
-);
-
-
-// ==================================================
-// REDIMENSIONAR
-// ==================================================
-
-window.addEventListener('resize', () => {
-
-  camera.aspect =
-    window.innerWidth / window.innerHeight;
-
-  camera.updateProjectionMatrix();
-
-  renderer.setSize(
-    window.innerWidth,
-    window.innerHeight
-  );
-
-  uniforms.uScale.value =
-    window.innerHeight * 0.5;
-
-  uniforms.uPixelRatio.value =
-    renderer.getPixelRatio();
-
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
 });
 
-
-// ==================================================
-// CARREGAMENTO INICIAL
-// ==================================================
-
-
-async function iniciar() {
-
+// ================= ARRANQUE (pré-visualização da 1.ª árvore) =================
+(async () => {
   try {
-
-    aviso.textContent = 'A carregar o modelo 3D…';
-    await carregarModelo();
-
-    aviso.textContent = 'A carregar a nuvem de pontos…';
-    await carregarPontos();
-
-    aviso.remove();
-
+    for (let i = 0; i < arvores.length; i++) {
+      aviso.textContent = `A carregar a árvore ${i + 1} de ${arvores.length}…`;
+      await arvores[i].carregar();
+    }
+    const a = arvores[0];
+    scene.add(a.grupo);
+    camera.position.set(0, a.alt * 0.65, a.alt * 2.5);
+    camera.lookAt(0, a.alt * 0.48, 0);
+    ligarGestos(renderer.domElement, camera, () => [a]);
+    carregado = true; aviso.remove();
+    let t0 = performance.now();
     renderer.setAnimationLoop(() => {
-
-      controls.update();
-
-      atualizarParticulas();
-
-      renderer.render(
-        scene,
-        camera
-      );
-
+      const t = performance.now(), dt = Math.min((t - t0) / 1000, 0.05); t0 = t;
+      if (autoRot) a.grupo.rotation.y += dt * 0.3;
+      a.atualizar(dt, camera, renderer.domElement.height);
+      a.posicionarBotao(camera, !arAtivo);
+      renderer.render(scene, camera);
     });
-
   } catch (erro) {
-
-    console.error('Erro ao iniciar a árvore:', erro);
-
-    aviso.textContent =
-      'Erro ao carregar: ' + (erro.message || String(erro));
-
-    aviso.style.display = 'block';
-
+    console.error(erro);
+    aviso.textContent = 'Erro ao carregar: ' + (erro.message || erro);
   }
-
-}
-
-iniciar();
-
+})();
 </script>
 </body>
 </html>
