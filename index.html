@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Árvores AR</title>
 <style>
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif}
+html,body{touch-action:none;margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif}
 canvas{display:block;touch-action:none}
 #aviso{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#cfd8c8;font-size:15px;text-align:center;padding:24px;z-index:20}
 #arContainer{position:fixed;inset:0;display:none;overflow:hidden;z-index:1;touch-action:none}
@@ -65,11 +65,16 @@ const TEMPO_REGRESSO = 1.5;  // segundos até a árvore recompor
 const TRONCO_ATE = 0.35;     // fração da altura abaixo da qual é tronco
 const ALTURA_AR = 0.7;       // altura da árvore em AR (largura do marcador = 1)
 const LIMITE_ARRASTO = 12;   // px: acima disto o gesto passa a rodar a árvore
+const VEL_GIRO = 0.25;       // rotação automática ligeira (rad/s)
+const N_ORBITA = 700;        // partículas por anel
+const TAMANHO_ORBITA = 0.012;
+const CORES = [0x6bb8d0, 0xb98a62, 0xd6a03a]; // azul-turquesa, castanho claro, amarelo torrado (de baixo para cima)
+const ZOOM_MIN = 0.4, ZOOM_MAX = 3;
 
 // ================= BASE =================
 const $ = id => document.getElementById(id);
 const aviso = $('aviso'), botaoAR = $('botaoAR'), voltar = $('voltar'), dica = $('dica'), nota = $('nota'), arC = $('arContainer'), overlay = $('overlay');
-const _v = new THREE.Vector3(), _s = new THREE.Vector2();
+const _v = new THREE.Vector3(), _s = new THREE.Vector2(), _q = new THREE.Quaternion(), _y = new THREE.Vector3(0, 1, 0);
 let arAtivo = false, carregado = false, autoRot = true, mindarAtivo = null;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -93,9 +98,9 @@ function mostrarNota(t) {
 
 // ================= SHADERS =================
 // uCopa = (centro x, altura do tronco, centro z, nº de sectores)
-const GLSL_ZONA = `uniform vec4 uCopa; uniform float uZona[8];
+const GLSL_ZONA = `uniform vec4 uCopa; uniform float uTopo; uniform float uZona[8];
 float zonaDe(vec3 p){ if(p.y<uCopa.y) return -1.;
-  float t=(atan(p.z-uCopa.z,p.x-uCopa.x)+3.14159265)/6.2831853;
+  float t=(p.y-uCopa.y)/max(uTopo-uCopa.y,.0001);
   return min(floor(t*uCopa.w),uCopa.w-1.); }`;
 
 const VERT_PONTOS = `attribute vec3 aRand; attribute float aZona;
@@ -119,6 +124,22 @@ void main(){ vec2 q=gl_PointCoord-.5; float d=dot(q,q); if(d>.25) discard;
   #include <colorspace_fragment>
 }`;
 
+const VERT_ORBITA = `attribute vec3 aOrb; attribute float aZona;
+uniform vec4 uCopa; uniform float uZona[8]; uniform float uTopo, uRaio, uTime, uSizeOrb, uScale;
+varying vec3 vColor; varying float vAlpha;
+void main(){
+  float i=aZona, s=uZona[int(i)];
+  float camada=(uTopo-uCopa.y)/uCopa.w;
+  float dir=mod(i,2.)<.5?1.:-1.;
+  float ang=aOrb.x+uTime*(.45+.12*i)*dir;
+  float r=uRaio*(1.+aOrb.y*.08)*(1.+s*.2);
+  vec3 p=vec3(uCopa.x+cos(ang)*r, uCopa.y+(i+.5)*camada+aOrb.z*camada*.3, uCopa.z+sin(ang)*r);
+  vec4 mv=modelViewMatrix*vec4(p,1.);
+  gl_PointSize=max(2.,uSizeOrb*(1.+s*1.5)*uScale/max(-mv.z,.01));
+  gl_Position=projectionMatrix*mv;
+  vColor=color*(1.+s*1.2); vAlpha=.6+.4*s;
+}`;
+
 // ================= ÁRVORE =================
 class Arvore {
   constructor(cfg) {
@@ -127,11 +148,13 @@ class Arvore {
     this.grupo = new THREE.Group();
     this.forca = new Float32Array(8);
     this.premida = -1;
+    this.zoom = 1; this.base = 1;
     this.audios = cfg.audios.map(src => { const a = new Audio(src); a.loop = true; a.preload = 'auto'; return a; });
     this.u = {
       uCopa: { value: new THREE.Vector4() }, uZona: { value: Array(8).fill(0) },
       uInv: { value: new THREE.Matrix4() }, uSizeWorld: { value: 0 },
-      uScale: { value: 1 }, uScatter: { value: 0 }, uTime: { value: 0 }
+      uScale: { value: 1 }, uScatter: { value: 0 }, uTime: { value: 0 },
+      uTopo: { value: 1 }, uRaio: { value: 1 }, uSizeOrb: { value: 0 }
     };
     this.btn = document.createElement('button');
     this.btn.className = 'tronco';
@@ -143,7 +166,7 @@ class Arvore {
   zonaDe(p) {
     const c = this.u.uCopa.value;
     if (p.y < c.y) return -1;
-    const t = (Math.atan2(p.z - c.z, p.x - c.x) + Math.PI) / (2 * Math.PI);
+    const t = (p.y - c.y) / Math.max(this.u.uTopo.value - c.y, 1e-4);
     return Math.min(Math.floor(t * this.n), this.n - 1);
   }
 
@@ -243,6 +266,8 @@ class Arvore {
     if (mn.x > mx.x) throw new Error('Não encontrei copa acima do tronco (ajusta TRONCO_ATE).');
     const cx = (mn.x + mx.x) / 2, cy = (mn.y + mx.y) / 2, cz = (mn.z + mx.z) / 2;
     this.u.uCopa.value.set(cx, ty, cz, this.n);
+    this.u.uTopo.value = mx.y;
+    this.u.uRaio.value = Math.max(mx.x - mn.x, mx.z - mn.z) / 2 * 1.15;
     this.pBtn = new THREE.Vector3(ns ? sx / ns : cx, ty * 0.55, ns ? sz / ns : cz);
 
     const pos = [], cor = [], rnd = [], zon = [];
@@ -265,11 +290,32 @@ class Arvore {
     this.pts.frustumCulled = false; this.pts.visible = false;
     this.grupo.add(this.pts);
 
-    // Elipsoide invisível a envolver a copa: toque rápido e barato
-    this.proxy = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ visible: false }));
-    this.proxy.position.set(cx, cy, cz);
-    this.proxy.scale.set((mx.x - mn.x) / 2, (mx.y - mn.y) / 2, (mx.z - mn.z) / 2);
-    this.grupo.add(this.proxy);
+    // Anéis de partículas coloridas a girar em volta da copa (um por zona e por áudio)
+    const camada = (mx.y - ty) / this.n, R = this.u.uRaio.value;
+    const op = [], oc = [], oz = [], oo = [];
+    this.toros = [];
+    for (let z = 0; z < this.n; z++) {
+      const cor = new THREE.Color(CORES[z % CORES.length]);
+      for (let i = 0; i < N_ORBITA; i++) {
+        op.push(0, 0, 0); oc.push(cor.r, cor.g, cor.b); oz.push(z);
+        oo.push(Math.random() * 6.2832, Math.random() * 2 - 1, Math.random() * 2 - 1);
+      }
+      // toro invisível: é nele que se toca
+      const tor = new THREE.Mesh(new THREE.TorusGeometry(R, Math.max(camada * 0.5, H * 0.06), 8, 32), new THREE.MeshBasicMaterial({ visible: false }));
+      tor.rotation.x = Math.PI / 2; tor.position.set(cx, ty + (z + 0.5) * camada, cz); tor.userData.zona = z;
+      this.grupo.add(tor); this.toros.push(tor);
+    }
+    const og = new THREE.BufferGeometry();
+    og.setAttribute('position', new THREE.Float32BufferAttribute(op, 3));
+    og.setAttribute('color', new THREE.Float32BufferAttribute(oc, 3));
+    og.setAttribute('aZona', new THREE.Float32BufferAttribute(oz, 1));
+    og.setAttribute('aOrb', new THREE.Float32BufferAttribute(oo, 3));
+    this.orbita = new THREE.Points(og, new THREE.ShaderMaterial({
+      uniforms: this.u, vertexShader: VERT_ORBITA, fragmentShader: FRAG_PONTOS,
+      vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+    }));
+    this.orbita.frustumCulled = false;
+    this.grupo.add(this.orbita);
   }
 
   visivel() {
@@ -279,8 +325,8 @@ class Arvore {
 
   zonaTocada(ray) {
     this.grupo.updateMatrixWorld(true);
-    const h = ray.intersectObject(this.proxy, false)[0];
-    return h ? this.zonaDe(this.grupo.worldToLocal(h.point.clone())) : -1;
+    const h = ray.intersectObjects(this.toros, false)[0];
+    return h ? h.object.userData.zona : -1;
   }
 
   premir(z) {
@@ -293,10 +339,13 @@ class Arvore {
   atualizar(dt, cam, alturaPx) {
     const u = this.u;
     u.uTime.value += dt;
+    this.grupo.quaternion.multiply(_q.setFromAxisAngle(_y, VEL_GIRO * dt));   // giro ligeiro permanente
+    this.grupo.scale.setScalar(this.base * this.zoom);
     this.grupo.updateWorldMatrix(true, false);
     u.uInv.value.copy(this.grupo.matrixWorld).invert();
     u.uSizeWorld.value = TAMANHO_PONTO * this.alt * this.grupo.scale.x;
     u.uScatter.value = DISPERSAO * this.alt;
+    u.uSizeOrb.value = TAMANHO_ORBITA * this.alt * this.grupo.scale.x;
     u.uScale.value = alturaPx / (2 * Math.tan(cam.fov * Math.PI / 360));
     let ativo = false;
     for (let z = 0; z < this.n; z++) {
@@ -324,35 +373,51 @@ class Arvore {
 const arvores = ARVORES.map(c => new Arvore(c));
 
 // ================= GESTOS =================
-// Tocar e manter na copa = dispersão + áudio. Arrastar (ou tocar fora da copa) = rodar.
-function ligarGestos(el, cam, ativas) {
-  const ray = new THREE.Raycaster(), nd = new THREE.Vector2();
-  let e0 = null;
-  el.addEventListener('pointerdown', e => {
-    if (!e.isPrimary) return;
-    autoRot = false;
-    el.setPointerCapture(e.pointerId);
-    const r = el.getBoundingClientRect();
-    nd.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
-    ray.setFromCamera(nd, cam);
-    e0 = { x: e.clientX, y: e.clientY, ult: e.clientX, arv: null };
-    for (const a of ativas()) {
-      const z = a.zonaTocada(ray);
-      if (z >= 0) { a.premir(z); e0.arv = a; break; }
+// 1 dedo na copa (anel) e manter = áudio + dispersão. 1 dedo a arrastar = rodar (x e y).
+// 2 dedos = zoom (afastar/juntar) e rotação no 3.º eixo (rodar os dedos). Roda do rato = zoom.
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+function rodar(a, eixoMundo, ang) {
+  const qp = a.grupo.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+  a.grupo.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(eixoMundo.clone().applyQuaternion(qp), ang));
+}
+function ligarGestos(cam, ativas) {
+  const ray = new THREE.Raycaster(), nd = new THREE.Vector2(), P = new Map();
+  let prem = null, d0 = 1, a0 = 0;
+  const eixo = (x, y, z) => new THREE.Vector3(x, y, z).applyQuaternion(cam.getWorldQuaternion(new THREE.Quaternion()));
+  const par = () => { const [a, b] = [...P.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, ang: Math.atan2(b.y - a.y, b.x - a.x) }; };
+  addEventListener('pointerdown', e => {
+    if (e.target.closest && e.target.closest('button')) return;
+    P.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
+    if (P.size === 1) {
+      nd.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1);
+      ray.setFromCamera(nd, cam);
+      for (const a of ativas()) { const z = a.zonaTocada(ray); if (z >= 0) { a.premir(z); prem = a; break; } }
+    } else if (P.size === 2) {
+      if (prem) { prem.largar(); prem = null; }
+      const q = par(); d0 = q.d; a0 = q.ang;
     }
   });
-  el.addEventListener('pointermove', e => {
-    if (!e0 || !e.isPrimary) return;
-    if (e0.arv && Math.hypot(e.clientX - e0.x, e.clientY - e0.y) > LIMITE_ARRASTO) { e0.arv.largar(); e0.arv = null; }
-    if (!e0.arv) {
-      const dx = e.clientX - e0.ult;
-      ativas().forEach(a => a.grupo.rotation.y += dx * 0.01);
+  addEventListener('pointermove', e => {
+    const p = P.get(e.pointerId); if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+    if (P.size === 1) {
+      if (prem && Math.hypot(p.x - p.x0, p.y - p.y0) > LIMITE_ARRASTO) { prem.largar(); prem = null; }
+      if (!prem) { const up = eixo(0, 1, 0), dir = eixo(1, 0, 0); ativas().forEach(a => { rodar(a, up, dx * 0.01); rodar(a, dir, dy * 0.01); }); }
+    } else if (P.size === 2) {
+      const q = par(), fw = eixo(0, 0, -1);
+      let d = q.ang - a0; d = Math.atan2(Math.sin(d), Math.cos(d));
+      ativas().forEach(a => { a.zoom = clamp(a.zoom * q.d / d0, ZOOM_MIN, ZOOM_MAX); rodar(a, fw, d); });
+      d0 = q.d; a0 = q.ang;
     }
-    e0.ult = e.clientX;
   });
-  const fim = () => { if (e0 && e0.arv) e0.arv.largar(); e0 = null; };
-  el.addEventListener('pointerup', fim);
-  el.addEventListener('pointercancel', fim);
+  const fim = e => {
+    P.delete(e.pointerId);
+    if (prem) { prem.largar(); prem = null; }
+    if (P.size === 1) { const v = [...P.values()][0]; v.x0 = v.x; v.y0 = v.y; }
+  };
+  addEventListener('pointerup', fim);
+  addEventListener('pointercancel', fim);
+  addEventListener('wheel', e => ativas().forEach(a => a.zoom = clamp(a.zoom * (1 - e.deltaY * 0.001), ZOOM_MIN, ZOOM_MAX)), { passive: true });
 }
 
 // ================= AR =================
@@ -362,7 +427,7 @@ async function iniciarAR() {
   try {
     const { MindARThree } = await import('mindar-image-three');
     arC.style.display = 'block';
-    const mindar = new MindARThree({ container: arC, imageTargetSrc: MARCADOR, uiLoading: 'no', uiScanning: 'no', uiError: 'no' });
+    const mindar = new MindARThree({ container: arC, imageTargetSrc: MARCADOR, uiLoading: 'no', uiScanning: 'no', uiError: 'no', filterMinCF: 0.0001, filterBeta: 1000, missTolerance: 10, warmupTolerance: 5 });
     mindarAtivo = mindar;
     const { renderer: r, scene: s, camera: cam } = mindar;
     s.background = null; r.setClearColor(0x000000, 0);
@@ -372,8 +437,8 @@ async function iniciarAR() {
       const anc = mindar.addAnchor(a.cfg.alvo);
       const sup = new THREE.Group();
       sup.rotation.x = Math.PI / 2;            // árvore perpendicular ao papel
-      a.grupo.scale.setScalar(ALTURA_AR / a.alt);
-      a.grupo.position.set(0, 0, 0); a.grupo.rotation.set(0, 0, 0);
+      a.base = ALTURA_AR / a.alt; a.zoom = 1;
+      a.grupo.position.set(0, 0, 0); a.grupo.quaternion.identity();
       sup.add(a.grupo); anc.group.add(sup);
       anc.onTargetFound = () => { dica.style.display = 'none'; };
       anc.onTargetLost = () => { dica.style.display = 'block'; };
@@ -383,7 +448,7 @@ async function iniciarAR() {
     renderer.domElement.style.display = 'none';
     await mindar.start();
     voltar.style.display = 'block'; dica.style.display = 'block';
-    ligarGestos(r.domElement, cam, () => arvores.filter(a => a.visivel()));
+    ligarGestos(cam, () => arvores.filter(a => a.visivel()));
 
     let t0 = performance.now();
     r.setAnimationLoop(() => {
@@ -419,14 +484,14 @@ addEventListener('resize', () => {
     }
     const a = arvores[0];
     scene.add(a.grupo);
-    camera.position.set(0, a.alt * 0.65, a.alt * 2.5);
-    camera.lookAt(0, a.alt * 0.48, 0);
-    ligarGestos(renderer.domElement, camera, () => [a]);
+    a.base = 1;
+    camera.position.set(0, a.alt * 0.55, a.alt * 1.7);
+    camera.lookAt(0, a.alt * 0.5, 0);
+    ligarGestos(camera, () => arAtivo ? [] : [a]);
     carregado = true; aviso.remove();
     let t0 = performance.now();
     renderer.setAnimationLoop(() => {
       const t = performance.now(), dt = Math.min((t - t0) / 1000, 0.05); t0 = t;
-      if (autoRot) a.grupo.rotation.y += dt * 0.3;
       a.atualizar(dt, camera, renderer.domElement.height);
       a.posicionarBotao(camera, !arAtivo);
       renderer.render(scene, camera);
