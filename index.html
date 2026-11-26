@@ -63,18 +63,18 @@ const TAMANHO_PONTO = 0.006; // diâmetro do ponto, em fração da altura da ár
 const DISPERSAO = 0.35;      // distância da dispersão, em fração da altura
 const TEMPO_REGRESSO = 1.5;  // segundos até a árvore recompor
 const TRONCO_ATE = 0.35;     // fração da altura abaixo da qual é tronco
-const ALTURA_AR = 0.7;       // altura da árvore em AR (largura do marcador = 1)
+const ALTURA_AR = 0.9;       // altura da árvore em AR (largura do marcador = 1)
 const LIMITE_ARRASTO = 12;   // px: acima disto o gesto passa a rodar a árvore
 const VEL_GIRO = 0.25;       // rotação automática ligeira (rad/s)
 const N_ORBITA = 700;        // partículas por anel
-const TAMANHO_ORBITA = 0.012;
-const CORES = [0x6bb8d0, 0xb98a62, 0xd6a03a]; // azul-turquesa, castanho claro, amarelo torrado (de baixo para cima)
+const TAMANHO_ORBITA = 0.005;
+const CORES = [0xa6e06a, 0x3fc27f, 0x1f9e8a]; // verde lima, verde esmeralda, verde azulado (de baixo para cima)
 const ZOOM_MIN = 0.4, ZOOM_MAX = 3;
 
 // ================= BASE =================
 const $ = id => document.getElementById(id);
 const aviso = $('aviso'), botaoAR = $('botaoAR'), voltar = $('voltar'), dica = $('dica'), nota = $('nota'), arC = $('arContainer'), overlay = $('overlay');
-const _v = new THREE.Vector3(), _s = new THREE.Vector2(), _q = new THREE.Quaternion(), _y = new THREE.Vector3(0, 1, 0);
+const _p = new THREE.Vector3(), _o = new THREE.Quaternion(), _e = new THREE.Vector3(), _v = new THREE.Vector3(), _s = new THREE.Vector2(), _q = new THREE.Quaternion(), _y = new THREE.Vector3(0, 1, 0);
 let arAtivo = false, carregado = false, autoRot = true, mindarAtivo = null;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -125,19 +125,21 @@ void main(){ vec2 q=gl_PointCoord-.5; float d=dot(q,q); if(d>.25) discard;
 }`;
 
 const VERT_ORBITA = `attribute vec3 aOrb; attribute float aZona;
-uniform vec4 uCopa; uniform float uZona[8]; uniform float uTopo, uRaio, uTime, uSizeOrb, uScale;
+uniform vec4 uCopa; uniform float uZona[8]; uniform float uTopo, uRaio, uTime, uSizeOrb, uScale, uMinPx;
 varying vec3 vColor; varying float vAlpha;
 void main(){
   float i=aZona, s=uZona[int(i)];
   float camada=(uTopo-uCopa.y)/uCopa.w;
   float dir=mod(i,2.)<.5?1.:-1.;
   float ang=aOrb.x+uTime*(.45+.12*i)*dir;
-  float r=uRaio*(1.+aOrb.y*.08)*(1.+s*.2);
-  vec3 p=vec3(uCopa.x+cos(ang)*r, uCopa.y+(i+.5)*camada+aOrb.z*camada*.3, uCopa.z+sin(ang)*r);
+  float irr=1.+.22*sin(ang*2.+i*1.7+uTime*.2)+.12*sin(ang*3.+i*4.1-uTime*.15)+aOrb.y*.12;
+  float r=uRaio*irr*(1.+s*.15);
+  float dy=camada*(.35*sin(ang*2.+i*2.3+uTime*.25)+aOrb.z*.3);
+  vec3 p=vec3(uCopa.x+cos(ang)*r, uCopa.y+(i+.5)*camada+dy, uCopa.z+sin(ang)*r);
   vec4 mv=modelViewMatrix*vec4(p,1.);
-  gl_PointSize=max(2.,uSizeOrb*(1.+s*1.5)*uScale/max(-mv.z,.01));
+  gl_PointSize=max(uMinPx,uSizeOrb*(1.+s*1.5)*uScale/max(-mv.z,.01));
   gl_Position=projectionMatrix*mv;
-  vColor=color*(1.+s*1.2); vAlpha=.6+.4*s;
+  vColor=min(color*(1.+s*.6),vec3(1.)); vAlpha=.8+.2*s;
 }`;
 
 // ================= ÁRVORE =================
@@ -145,16 +147,16 @@ class Arvore {
   constructor(cfg) {
     this.cfg = cfg;
     this.n = Math.min(cfg.audios.length, 8) || 1;
-    this.grupo = new THREE.Group();
+    this.raiz = new THREE.Group(); this.grupo = new THREE.Group(); this.raiz.add(this.grupo);
     this.forca = new Float32Array(8);
-    this.premida = -1;
+    this.ativa = [];
     this.zoom = 1; this.base = 1;
-    this.audios = cfg.audios.map(src => { const a = new Audio(src); a.loop = true; a.preload = 'auto'; return a; });
+    this.audios = cfg.audios.map((src, z) => { const a = new Audio(src); a.loop = false; a.preload = 'auto'; a.onended = () => { this.ativa[z] = false; }; return a; });
     this.u = {
       uCopa: { value: new THREE.Vector4() }, uZona: { value: Array(8).fill(0) },
       uInv: { value: new THREE.Matrix4() }, uSizeWorld: { value: 0 },
       uScale: { value: 1 }, uScatter: { value: 0 }, uTime: { value: 0 },
-      uTopo: { value: 1 }, uRaio: { value: 1 }, uSizeOrb: { value: 0 }
+      uTopo: { value: 1 }, uRaio: { value: 1 }, uSizeOrb: { value: 0 }, uMinPx: { value: 2 }
     };
     this.btn = document.createElement('button');
     this.btn.className = 'tronco';
@@ -183,6 +185,7 @@ class Arvore {
     m.traverse(o => o.isMesh && meshes.push(o));
     meshes.forEach(o => this.dissolver(o));
     this.criarPontos(meshes);
+    this.grupo.position.y = -this.alt / 2;   // pivô de rotação no centro da árvore
   }
 
   // O modelo realista desfaz-se por zona (descarta fragmentos com ruído)
@@ -300,9 +303,9 @@ class Arvore {
         op.push(0, 0, 0); oc.push(cor.r, cor.g, cor.b); oz.push(z);
         oo.push(Math.random() * 6.2832, Math.random() * 2 - 1, Math.random() * 2 - 1);
       }
-      // toro invisível: é nele que se toca
-      const tor = new THREE.Mesh(new THREE.TorusGeometry(R, Math.max(camada * 0.5, H * 0.06), 8, 32), new THREE.MeshBasicMaterial({ visible: false }));
-      tor.rotation.x = Math.PI / 2; tor.position.set(cx, ty + (z + 0.5) * camada, cz); tor.userData.zona = z;
+      // cilindro invisível por camada: é nele que se toca
+      const tor = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.35, R * 1.35, camada, 16, 1), new THREE.MeshBasicMaterial({ visible: false }));
+      tor.position.set(cx, ty + (z + 0.5) * camada, cz); tor.userData.zona = z;
       this.grupo.add(tor); this.toros.push(tor);
     }
     const og = new THREE.BufferGeometry();
@@ -312,7 +315,7 @@ class Arvore {
     og.setAttribute('aOrb', new THREE.Float32BufferAttribute(oo, 3));
     this.orbita = new THREE.Points(og, new THREE.ShaderMaterial({
       uniforms: this.u, vertexShader: VERT_ORBITA, fragmentShader: FRAG_PONTOS,
-      vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+      vertexColors: true, transparent: true, depthWrite: false
     }));
     this.orbita.frustumCulled = false;
     this.grupo.add(this.orbita);
@@ -330,32 +333,34 @@ class Arvore {
   }
 
   premir(z) {
-    this.premida = z;
-    const a = this.audios[z];
-    if (a) a.play().catch(() => {});   // tem de ser chamado dentro do toque
+    if (this.ativa[z]) return;                 // já a tocar: corre até ao fim
+    this.ativa[z] = true;
+    const a = this.audios[z], falha = () => setTimeout(() => { this.ativa[z] = false; }, 2500);
+    if (!a) return falha();
+    a.currentTime = 0;
+    a.play().catch(falha);
   }
-  largar() { this.premida = -1; }
+  largar() {}
 
   atualizar(dt, cam, alturaPx) {
     const u = this.u;
     u.uTime.value += dt;
-    this.grupo.quaternion.multiply(_q.setFromAxisAngle(_y, VEL_GIRO * dt));   // giro ligeiro permanente
-    this.grupo.scale.setScalar(this.base * this.zoom);
+    this.raiz.quaternion.multiply(_q.setFromAxisAngle(_y, VEL_GIRO * dt));   // giro ligeiro permanente
+    this.raiz.scale.setScalar(this.base * this.zoom);
     this.grupo.updateWorldMatrix(true, false);
     u.uInv.value.copy(this.grupo.matrixWorld).invert();
-    u.uSizeWorld.value = TAMANHO_PONTO * this.alt * this.grupo.scale.x;
+    u.uSizeWorld.value = TAMANHO_PONTO * this.alt * this.raiz.scale.x;
     u.uScatter.value = DISPERSAO * this.alt;
-    u.uSizeOrb.value = TAMANHO_ORBITA * this.alt * this.grupo.scale.x;
+    u.uMinPx.value = 1.6 * alturaPx / innerHeight;
+    u.uSizeOrb.value = TAMANHO_ORBITA * this.alt * this.raiz.scale.x;
     u.uScale.value = alturaPx / (2 * Math.tan(cam.fov * Math.PI / 360));
     let ativo = false;
     for (let z = 0; z < this.n; z++) {
-      const alvo = this.premida === z ? 1 : 0;
+      const alvo = this.ativa[z] ? 1 : 0;
       let f = this.forca[z];
       f = alvo > f ? Math.min(1, f + dt * 3) : Math.max(0, f - dt / TEMPO_REGRESSO);
       this.forca[z] = f; u.uZona.value[z] = f;
       if (f > 0) ativo = true;
-      const a = this.audios[z];
-      if (a) { try { a.volume = Math.min(1, f * 2); if (!alvo && f === 0 && !a.paused) a.pause(); } catch (e) {} }
     }
     if (this.pts) this.pts.visible = ativo;
   }
@@ -373,36 +378,34 @@ class Arvore {
 const arvores = ARVORES.map(c => new Arvore(c));
 
 // ================= GESTOS =================
-// 1 dedo na copa (anel) e manter = áudio + dispersão. 1 dedo a arrastar = rodar (x e y).
+// Toque rápido num anel = áudio (corre até ao fim) + dispersão. 1 dedo a arrastar = rodar (x e y).
 // 2 dedos = zoom (afastar/juntar) e rotação no 3.º eixo (rodar os dedos). Roda do rato = zoom.
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 function rodar(a, eixoMundo, ang) {
-  const qp = a.grupo.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
-  a.grupo.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(eixoMundo.clone().applyQuaternion(qp), ang));
+  const qp = a.raiz.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+  a.raiz.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(eixoMundo.clone().applyQuaternion(qp), ang));
 }
 function ligarGestos(cam, ativas) {
   const ray = new THREE.Raycaster(), nd = new THREE.Vector2(), P = new Map();
-  let prem = null, d0 = 1, a0 = 0;
+  let cand = null, d0 = 1, a0 = 0;
   const eixo = (x, y, z) => new THREE.Vector3(x, y, z).applyQuaternion(cam.getWorldQuaternion(new THREE.Quaternion()));
   const par = () => { const [a, b] = [...P.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, ang: Math.atan2(b.y - a.y, b.x - a.x) }; };
   addEventListener('pointerdown', e => {
     if (e.target.closest && e.target.closest('button')) return;
     P.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
+    cand = null;
     if (P.size === 1) {
       nd.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1);
       ray.setFromCamera(nd, cam);
-      for (const a of ativas()) { const z = a.zonaTocada(ray); if (z >= 0) { a.premir(z); prem = a; break; } }
-    } else if (P.size === 2) {
-      if (prem) { prem.largar(); prem = null; }
-      const q = par(); d0 = q.d; a0 = q.ang;
-    }
+      for (const a of ativas()) { const z = a.zonaTocada(ray); if (z >= 0) { cand = { a, z }; break; } }
+    } else if (P.size === 2) { const q = par(); d0 = q.d; a0 = q.ang; }
   });
   addEventListener('pointermove', e => {
     const p = P.get(e.pointerId); if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (P.size === 1) {
-      if (prem && Math.hypot(p.x - p.x0, p.y - p.y0) > LIMITE_ARRASTO) { prem.largar(); prem = null; }
-      if (!prem) { const up = eixo(0, 1, 0), dir = eixo(1, 0, 0); ativas().forEach(a => { rodar(a, up, dx * 0.01); rodar(a, dir, dy * 0.01); }); }
+      if (cand && Math.hypot(p.x - p.x0, p.y - p.y0) > LIMITE_ARRASTO) cand = null;   // passou a arrastar
+      if (!cand) { const up = eixo(0, 1, 0), dir = eixo(1, 0, 0); ativas().forEach(a => { rodar(a, up, dx * 0.01); rodar(a, dir, dy * 0.01); }); }
     } else if (P.size === 2) {
       const q = par(), fw = eixo(0, 0, -1);
       let d = q.ang - a0; d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -410,13 +413,14 @@ function ligarGestos(cam, ativas) {
       d0 = q.d; a0 = q.ang;
     }
   });
-  const fim = e => {
+  addEventListener('pointerup', e => {
+    const unico = P.size === 1;
     P.delete(e.pointerId);
-    if (prem) { prem.largar(); prem = null; }
-    if (P.size === 1) { const v = [...P.values()][0]; v.x0 = v.x; v.y0 = v.y; }
-  };
-  addEventListener('pointerup', fim);
-  addEventListener('pointercancel', fim);
+    if (cand && unico) cand.a.premir(cand.z);      // toque rápido: dispara o áudio dentro do gesto do utilizador
+    cand = null;
+    if (P.size === 1) { const v = [...P.values()][0]; v.x0 = v.x; v.y0 = v.y; cand = null; }
+  });
+  addEventListener('pointercancel', e => { P.delete(e.pointerId); cand = null; });
   addEventListener('wheel', e => ativas().forEach(a => a.zoom = clamp(a.zoom * (1 - e.deltaY * 0.001), ZOOM_MIN, ZOOM_MAX)), { passive: true });
 }
 
@@ -435,11 +439,12 @@ async function iniciarAR() {
 
     arvores.forEach(a => {
       const anc = mindar.addAnchor(a.cfg.alvo);
-      const sup = new THREE.Group();
-      sup.rotation.x = Math.PI / 2;            // árvore perpendicular ao papel
+      const seg = new THREE.Group();            // segue o marcador de forma suavizada
+      seg.visible = false; s.add(seg);
       a.base = ALTURA_AR / a.alt; a.zoom = 1;
-      a.grupo.position.set(0, 0, 0); a.grupo.quaternion.identity();
-      sup.add(a.grupo); anc.group.add(sup);
+      a.raiz.position.set(0, 0, 0); a.raiz.quaternion.identity();
+      seg.add(a.raiz);                          // sem rotação extra: fica paralela ao marcador
+      a.anc = anc; a.seg = seg; a.snap = true; a.visto = -1e9;
       anc.onTargetFound = () => { dica.style.display = 'none'; };
       anc.onTargetLost = () => { dica.style.display = 'block'; };
     });
@@ -453,8 +458,17 @@ async function iniciarAR() {
     let t0 = performance.now();
     r.setAnimationLoop(() => {
       const t = performance.now(), dt = Math.min((t - t0) / 1000, 0.05); t0 = t;
-      const H = r.getDrawingBufferSize(_s).y;
-      arvores.forEach(a => { a.atualizar(dt, cam, H); a.posicionarBotao(cam, true); });
+      const H = r.getDrawingBufferSize(_s).y, k = 1 - Math.exp(-dt * 12);
+      arvores.forEach(a => {
+        const g = a.anc.group;
+        if (g.visible) {
+          g.matrix.decompose(_p, _o, _e);
+          if (a.snap) { a.seg.position.copy(_p); a.seg.quaternion.copy(_o); a.seg.scale.copy(_e); a.snap = false; }
+          else { a.seg.position.lerp(_p, k); a.seg.quaternion.slerp(_o, k); a.seg.scale.lerp(_e, k); }
+          a.visto = t; a.seg.visible = true;
+        } else if (t - a.visto > 1500) { a.seg.visible = false; a.snap = true; }
+        a.atualizar(dt, cam, H); a.posicionarBotao(cam, true);
+      });
       r.render(s, cam);
     });
   } catch (erro) {
@@ -483,10 +497,10 @@ addEventListener('resize', () => {
       await arvores[i].carregar();
     }
     const a = arvores[0];
-    scene.add(a.grupo);
+    scene.add(a.raiz);
     a.base = 1;
-    camera.position.set(0, a.alt * 0.55, a.alt * 1.7);
-    camera.lookAt(0, a.alt * 0.5, 0);
+    camera.position.set(0, a.alt * 0.05, a.alt * 1.7);
+    camera.lookAt(0, 0, 0);
     ligarGestos(camera, () => arAtivo ? [] : [a]);
     carregado = true; aviso.remove();
     let t0 = performance.now();
