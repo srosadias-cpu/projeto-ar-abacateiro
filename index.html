@@ -59,14 +59,15 @@ const ARVORES = [
 const MARCADOR = 'targets/targets.mind';   // um só ficheiro com todas as imagens, pela ordem dos alvos
 
 const N_AMOSTRAS = 150000;   // pontos gerados na superfície (só os da copa ficam)
-const TAMANHO_PONTO = 0.006; // diâmetro do ponto, em fração da altura da árvore
+const TAMANHO_PONTO = 0.005; // diâmetro do ponto, em fração da altura da árvore
 const DISPERSAO = 0.35;      // distância da dispersão, em fração da altura
 const TEMPO_REGRESSO = 1.5;  // segundos até a árvore recompor
 const TRONCO_ATE = 0.35;     // fração da altura abaixo da qual é tronco
 const ALTURA_AR = 0.9;       // altura da árvore em AR (largura do marcador = 1)
 const LIMITE_ARRASTO = 12;   // px: acima disto o gesto passa a rodar a árvore
 const VEL_GIRO = 0.25;       // rotação automática ligeira (rad/s)
-const N_ORBITA = 700;        // partículas por anel
+const N_ORBITA = 1400;       // partículas por anel (metade visível em repouso, todas ao tocar)
+const VEL_ORBITA = 0.15;     // velocidade de rotação dos anéis (rad/s)
 const TAMANHO_ORBITA = 0.005;
 const CORES = [0xa6e06a, 0x3fc27f, 0x1f9e8a]; // verde lima, verde esmeralda, verde azulado (de baixo para cima)
 const ZOOM_MIN = 0.4, ZOOM_MAX = 3;
@@ -124,20 +125,21 @@ void main(){ vec2 q=gl_PointCoord-.5; float d=dot(q,q); if(d>.25) discard;
   #include <colorspace_fragment>
 }`;
 
-const VERT_ORBITA = `attribute vec3 aOrb; attribute float aZona;
+const VERT_ORBITA = `attribute vec3 aOrb; attribute float aZona; attribute float aRank;
 uniform vec4 uCopa; uniform float uZona[8]; uniform float uTopo, uRaio, uTime, uSizeOrb, uScale, uMinPx;
 varying vec3 vColor; varying float vAlpha;
 void main(){
   float i=aZona, s=uZona[int(i)];
+  if(aRank>.5+.5*s){ gl_Position=vec4(2.,2.,2.,1.); gl_PointSize=0.; vColor=vec3(0.); vAlpha=0.; return; }
   float camada=(uTopo-uCopa.y)/uCopa.w;
   float dir=mod(i,2.)<.5?1.:-1.;
-  float ang=aOrb.x+uTime*(.45+.12*i)*dir;
-  float irr=1.+.22*sin(ang*2.+i*1.7+uTime*.2)+.12*sin(ang*3.+i*4.1-uTime*.15)+aOrb.y*.12;
-  float r=uRaio*irr*(1.+s*.15);
-  float dy=camada*(.35*sin(ang*2.+i*2.3+uTime*.25)+aOrb.z*.3);
+  float ang=aOrb.x+uTime*(${VEL_ORBITA.toFixed(3)}*(1.+.25*i))*dir;
+  float irr=1.+(.22*sin(ang*2.+i*1.7+uTime*.2)+.12*sin(ang*3.+i*4.1-uTime*.15))*(1.-.5*s)+aOrb.y*.12*(1.-.7*s);
+  float r=uRaio*irr;
+  float dy=camada*(.35*sin(ang*2.+i*2.3+uTime*.25)*(1.-.5*s)+aOrb.z*.3*(1.-.7*s));
   vec3 p=vec3(uCopa.x+cos(ang)*r, uCopa.y+(i+.5)*camada+dy, uCopa.z+sin(ang)*r);
   vec4 mv=modelViewMatrix*vec4(p,1.);
-  gl_PointSize=max(uMinPx,uSizeOrb*(1.+s*1.5)*uScale/max(-mv.z,.01));
+  gl_PointSize=max(uMinPx,uSizeOrb*uScale/max(-mv.z,.01));
   gl_Position=projectionMatrix*mv;
   vColor=min(color*(1.+s*.6),vec3(1.)); vAlpha=.8+.2*s;
 }`;
@@ -183,7 +185,6 @@ class Arvore {
     g.updateMatrixWorld(true);
     const meshes = [];
     m.traverse(o => o.isMesh && meshes.push(o));
-    meshes.forEach(o => this.dissolver(o));
     this.criarPontos(meshes);
     this.grupo.position.y = -this.alt / 2;   // pivô de rotação no centro da árvore
   }
@@ -295,13 +296,13 @@ class Arvore {
 
     // Anéis de partículas coloridas a girar em volta da copa (um por zona e por áudio)
     const camada = (mx.y - ty) / this.n, R = this.u.uRaio.value;
-    const op = [], oc = [], oz = [], oo = [];
+    const op = [], oc = [], oz = [], oo = [], orr = [];
     this.toros = [];
     for (let z = 0; z < this.n; z++) {
       const cor = new THREE.Color(CORES[z % CORES.length]);
       for (let i = 0; i < N_ORBITA; i++) {
         op.push(0, 0, 0); oc.push(cor.r, cor.g, cor.b); oz.push(z);
-        oo.push(Math.random() * 6.2832, Math.random() * 2 - 1, Math.random() * 2 - 1);
+        oo.push(Math.random() * 6.2832, Math.random() * 2 - 1, Math.random() * 2 - 1); orr.push(i / N_ORBITA);
       }
       // cilindro invisível por camada: é nele que se toca
       const tor = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.35, R * 1.35, camada, 16, 1), new THREE.MeshBasicMaterial({ visible: false }));
@@ -313,10 +314,13 @@ class Arvore {
     og.setAttribute('color', new THREE.Float32BufferAttribute(oc, 3));
     og.setAttribute('aZona', new THREE.Float32BufferAttribute(oz, 1));
     og.setAttribute('aOrb', new THREE.Float32BufferAttribute(oo, 3));
+    og.setAttribute('aRank', new THREE.Float32BufferAttribute(orr, 1));
     this.orbita = new THREE.Points(og, new THREE.ShaderMaterial({
       uniforms: this.u, vertexShader: VERT_ORBITA, fragmentShader: FRAG_PONTOS,
       vertexColors: true, transparent: true, depthWrite: false
     }));
+    this.tronco = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.6, R * 0.6, ty, 12, 1), new THREE.MeshBasicMaterial({ visible: false }));
+    this.tronco.position.set(cx, ty / 2, cz); this.grupo.add(this.tronco);   // só para saber se o toque foi no modelo
     this.orbita.frustumCulled = false;
     this.grupo.add(this.orbita);
   }
@@ -330,6 +334,15 @@ class Arvore {
     this.grupo.updateMatrixWorld(true);
     const h = ray.intersectObjects(this.toros, false)[0];
     return h ? h.object.userData.zona : -1;
+  }
+
+  dentro(ray) {
+    this.grupo.updateMatrixWorld(true);
+    return ray.intersectObjects([...this.toros, this.tronco], false).length > 0;
+  }
+  parar() {
+    this.audios.forEach(a => { a.pause(); a.currentTime = 0; });
+    this.ativa.fill(false);
   }
 
   premir(z) {
@@ -378,7 +391,7 @@ class Arvore {
 const arvores = ARVORES.map(c => new Arvore(c));
 
 // ================= GESTOS =================
-// Toque rápido num anel = áudio (corre até ao fim) + dispersão. 1 dedo a arrastar = rodar (x e y).
+// Toque rápido num anel = áudio (corre até ao fim) + dispersão. Toque fora da árvore = pára o áudio. 1 dedo a arrastar = rodar (x e y).
 // 2 dedos = zoom (afastar/juntar) e rotação no 3.º eixo (rodar os dedos). Roda do rato = zoom.
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 function rodar(a, eixoMundo, ang) {
@@ -387,7 +400,7 @@ function rodar(a, eixoMundo, ang) {
 }
 function ligarGestos(cam, ativas) {
   const ray = new THREE.Raycaster(), nd = new THREE.Vector2(), P = new Map();
-  let cand = null, d0 = 1, a0 = 0;
+  let cand = null, dentro = false, d0 = 1, a0 = 0;
   const eixo = (x, y, z) => new THREE.Vector3(x, y, z).applyQuaternion(cam.getWorldQuaternion(new THREE.Quaternion()));
   const par = () => { const [a, b] = [...P.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, ang: Math.atan2(b.y - a.y, b.x - a.x) }; };
   addEventListener('pointerdown', e => {
@@ -398,6 +411,7 @@ function ligarGestos(cam, ativas) {
       nd.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1);
       ray.setFromCamera(nd, cam);
       for (const a of ativas()) { const z = a.zonaTocada(ray); if (z >= 0) { cand = { a, z }; break; } }
+      dentro = ativas().some(a => a.dentro(ray));
     } else if (P.size === 2) { const q = par(); d0 = q.d; a0 = q.ang; }
   });
   addEventListener('pointermove', e => {
@@ -414,9 +428,11 @@ function ligarGestos(cam, ativas) {
     }
   });
   addEventListener('pointerup', e => {
-    const unico = P.size === 1;
+    const unico = P.size === 1, p = P.get(e.pointerId);
+    const toque = unico && p && Math.hypot(p.x - p.x0, p.y - p.y0) <= LIMITE_ARRASTO;
     P.delete(e.pointerId);
-    if (cand && unico) cand.a.premir(cand.z);      // toque rápido: dispara o áudio dentro do gesto do utilizador
+    if (cand && toque) cand.a.premir(cand.z);      // toque rápido: dispara o áudio dentro do gesto do utilizador
+    else if (toque && !dentro) ativas().forEach(a => a.parar());   // toque fora da árvore e dos anéis: pára o áudio
     cand = null;
     if (P.size === 1) { const v = [...P.values()][0]; v.x0 = v.x; v.y0 = v.y; cand = null; }
   });
